@@ -1,0 +1,800 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UserStatus {
+  ACTIVE
+  LOCKED
+  DISABLED
+}
+
+enum StaffType {
+  ADMIN
+  TEACHER_MAIN
+  TEACHER_ASSISTANT
+  ACCOUNTANT
+  RECEPTIONIST
+  ACADEMIC
+  COLLABORATOR
+  PART_TIME
+}
+
+enum StaffStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum PermissionEffect {
+  ALLOW
+  DENY
+}
+
+enum PermissionScope {
+  GLOBAL
+  BRANCH
+  CLASS
+  SESSION
+  STUDENT
+}
+
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+}
+
+enum StudentStatus {
+  STUDYING
+  PAUSED
+  RESERVED
+  LEFT
+}
+
+enum ClassStatus {
+  PLANNED
+  ACTIVE
+  PAUSED
+  COMPLETED
+}
+
+enum EnrollmentStatus {
+  ACTIVE
+  PAUSED
+  RESERVED
+  LEFT
+}
+
+enum TeacherAssignmentRole {
+  MAIN
+  ASSISTANT
+}
+
+enum AssignmentStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum RoomStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum ScheduleStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum SessionStatus {
+  PLANNED
+  COMPLETED
+  CANCELLED
+  MAKEUP
+  SUBSTITUTE
+}
+
+enum SessionTeacherRole {
+  MAIN
+  ASSISTANT
+  SUBSTITUTE
+}
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT_EXCUSED
+  ABSENT_UNEXCUSED
+  LATE
+  LEFT_EARLY
+  MAKEUP
+  RESERVED
+}
+
+enum CommentType {
+  SESSION
+  EXAM
+  PERIOD
+  FINAL
+}
+
+enum ExamType {
+  ENTRY
+  PERIODIC
+  MIDTERM
+  FINAL
+}
+
+enum TuitionStatus {
+  UNPAID
+  PARTIAL
+  PAID
+  OVERDUE
+  DISCOUNTED
+  RESERVED
+  REFUNDED
+}
+
+enum TuitionCalculationMode {
+  COURSE
+  PER_SESSION_TOTAL
+  PER_SESSION_ACTUAL
+}
+
+enum PaymentMethod {
+  CASH
+  BANK_TRANSFER
+  CARD
+  OTHER
+}
+
+enum SalaryType {
+  PER_SESSION
+  PER_HOUR
+  MONTHLY
+  PER_SHIFT
+  PER_TASK
+  AGREEMENT
+}
+
+enum SalaryRuleStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum PayrollStatus {
+  DRAFT
+  PENDING
+  APPROVED
+  PAID
+  LOCKED
+}
+
+enum NotificationType {
+  SYSTEM
+  TUITION
+  SCHEDULE
+  LEARNING
+}
+
+model User {
+  id                 String     @id @default(cuid())
+  name               String
+  email              String?    @unique
+  phone              String?    @unique
+  googleId           String?    @unique
+  passwordHash       String
+  mustChangePassword Boolean    @default(false)
+  status             UserStatus @default(ACTIVE)
+  createdAt          DateTime   @default(now())
+  updatedAt          DateTime   @updatedAt
+
+  roles                     UserRole[]
+  permissions               UserPermission[]
+  staffProfile              StaffProfile?
+  studentProfile            Student?            @relation("StudentUser")
+  parentProfile             Parent?             @relation("ParentUser")
+  classAssignments          ClassTeacher[]      @relation("ClassTeacherUser")
+  sessionAssignments        SessionTeacher[]    @relation("SessionTeacherUser")
+  markedAttendances         Attendance[]        @relation("AttendanceMarker")
+  createdComments           StudentComment[]    @relation("CommentCreator")
+  createdExams              Exam[]              @relation("ExamCreator")
+  createdScores             Score[]             @relation("ScoreCreator")
+  updatedScores             Score[]             @relation("ScoreUpdater")
+  createdTuitionCharges     TuitionCharge[]     @relation("TuitionChargeCreator")
+  receivedPayments          Payment[]           @relation("PaymentReceiver")
+  salaryRules               SalaryRule[]        @relation("SalaryRuleStaff")
+  createdPayrolls           Payroll[]           @relation("PayrollCreator")
+  approvedPayrolls          Payroll[]           @relation("PayrollApprover")
+  paidPayrolls              Payroll[]           @relation("PayrollPayer")
+  payrollAdjustmentsCreated PayrollAdjustment[] @relation("PayrollAdjustmentCreator")
+  payrollAdjustmentsStaff   PayrollAdjustment[] @relation("PayrollAdjustmentStaff")
+  payrollItems              PayrollItem[]       @relation("PayrollItemStaff")
+  notifications             Notification[]      @relation("NotificationUser")
+  auditLogs                 AuditLog[]          @relation("AuditLogUser")
+
+  @@index([status])
+  @@map("users")
+}
+
+model Role {
+  id          String  @id @default(cuid())
+  name        String
+  code        String  @unique
+  description String?
+
+  users       UserRole[]
+  permissions RolePermission[]
+
+  @@map("roles")
+}
+
+model Permission {
+  id          String  @id @default(cuid())
+  code        String  @unique
+  name        String
+  description String?
+
+  roles RolePermission[]
+  users UserPermission[]
+
+  @@map("permissions")
+}
+
+model UserRole {
+  id     String @id @default(cuid())
+  userId String
+  roleId String
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, roleId])
+  @@map("user_roles")
+}
+
+model RolePermission {
+  id           String @id @default(cuid())
+  roleId       String
+  permissionId String
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@unique([roleId, permissionId])
+  @@map("role_permissions")
+}
+
+model UserPermission {
+  id           String           @id @default(cuid())
+  userId       String
+  permissionId String
+  effect       PermissionEffect @default(ALLOW)
+  scopeType    PermissionScope  @default(GLOBAL)
+  scopeId      String?
+  validFrom    DateTime?
+  validTo      DateTime?
+
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, permissionId, scopeType, scopeId])
+  @@index([userId, scopeType, scopeId])
+  @@map("user_permissions")
+}
+
+model StaffProfile {
+  id                String      @id @default(cuid())
+  userId            String      @unique
+  staffType         StaffType
+  fullName          String
+  phone             String?
+  email             String?
+  bankName          String?
+  bankAccountNumber String?
+  responsibility    String?
+  startDate         DateTime?
+  status            StaffStatus @default(ACTIVE)
+  note              String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([staffType, status])
+  @@map("staff_profiles")
+}
+
+model Student {
+  id            String        @id @default(cuid())
+  userId        String?       @unique
+  fullName      String
+  dateOfBirth   DateTime?
+  gender        Gender?
+  phone         String?
+  email         String?       @unique
+  school        String?
+  schoolGrade   String?
+  clubClass     String?
+  entryLevel    String?
+  hncodeAccount String?       @unique
+  status        StudentStatus @default(STUDYING)
+  note          String?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  user           User?            @relation("StudentUser", fields: [userId], references: [id], onDelete: SetNull)
+  parents        StudentParent[]
+  enrollments    ClassStudent[]
+  attendances    Attendance[]
+  comments       StudentComment[]
+  scores         Score[]
+  tuitionCharges TuitionCharge[]
+
+  @@index([status])
+  @@index([clubClass])
+  @@map("students")
+}
+
+model Parent {
+  id       String  @id @default(cuid())
+  userId   String? @unique
+  fullName String
+  phone    String?
+  email    String?
+  address  String?
+  note     String?
+
+  user          User?           @relation("ParentUser", fields: [userId], references: [id], onDelete: SetNull)
+  students      StudentParent[]
+  notifications Notification[]  @relation("NotificationParent")
+
+  @@index([phone])
+  @@map("parents")
+}
+
+model StudentParent {
+  id           String @id @default(cuid())
+  studentId    String
+  parentId     String
+  relationship String
+
+  student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  parent  Parent  @relation(fields: [parentId], references: [id], onDelete: Cascade)
+
+  @@unique([studentId, parentId])
+  @@map("student_parents")
+}
+
+model Branch {
+  id      String      @id @default(cuid())
+  name    String
+  address String?
+  phone   String?
+  status  StaffStatus @default(ACTIVE)
+
+  rooms   Room[]
+  classes CourseClass[]
+
+  @@map("branches")
+}
+
+model Room {
+  id       String     @id @default(cuid())
+  branchId String
+  name     String
+  capacity Int?
+  status   RoomStatus @default(ACTIVE)
+
+  branch    Branch          @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  classes   CourseClass[]
+  schedules ClassSchedule[]
+  sessions  ClassSession[]
+
+  @@unique([branchId, name])
+  @@map("rooms")
+}
+
+model CourseClass {
+  id                     String                 @id @default(cuid())
+  name                   String
+  subject                String?
+  level                  String?
+  branchId               String?
+  roomId                 String?
+  startDate              DateTime?
+  expectedEndDate        DateTime?
+  status                 ClassStatus            @default(PLANNED)
+  tuitionFee             Decimal?               @db.Decimal(12, 2)
+  tuitionMode            TuitionCalculationMode @default(COURSE)
+  tuitionPerSession      Decimal?               @db.Decimal(12, 2)
+  chargeByActualSessions Boolean                @default(false)
+  totalSessions          Int?
+  note                   String?
+  createdAt              DateTime               @default(now())
+  updatedAt              DateTime               @updatedAt
+
+  branch         Branch?          @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  room           Room?            @relation(fields: [roomId], references: [id], onDelete: SetNull)
+  students       ClassStudent[]
+  teachers       ClassTeacher[]
+  schedules      ClassSchedule[]
+  sessions       ClassSession[]
+  comments       StudentComment[]
+  exams          Exam[]
+  tuitionCharges TuitionCharge[]
+  salaryRules    SalaryRule[]
+  payrollItems   PayrollItem[]
+
+  @@index([status])
+  @@map("classes")
+}
+
+model ClassStudent {
+  id        String           @id @default(cuid())
+  classId   String
+  studentId String
+  status    EnrollmentStatus @default(ACTIVE)
+  joinedAt  DateTime         @default(now())
+  leftAt    DateTime?
+
+  courseClass CourseClass @relation(fields: [classId], references: [id], onDelete: Cascade)
+  student     Student     @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@unique([classId, studentId])
+  @@index([studentId, status])
+  @@map("class_students")
+}
+
+model ClassTeacher {
+  id            String                @id @default(cuid())
+  classId       String
+  teacherUserId String
+  teacherRole   TeacherAssignmentRole
+  status        AssignmentStatus      @default(ACTIVE)
+  assignedAt    DateTime              @default(now())
+
+  courseClass CourseClass @relation(fields: [classId], references: [id], onDelete: Cascade)
+  teacher     User        @relation("ClassTeacherUser", fields: [teacherUserId], references: [id], onDelete: Cascade)
+
+  @@unique([classId, teacherUserId, teacherRole])
+  @@index([teacherUserId, status])
+  @@map("class_teachers")
+}
+
+model ClassSchedule {
+  id        String         @id @default(cuid())
+  classId   String
+  dayOfWeek Int
+  startTime String
+  endTime   String
+  roomId    String?
+  startDate DateTime
+  endDate   DateTime?
+  status    ScheduleStatus @default(ACTIVE)
+
+  courseClass CourseClass    @relation(fields: [classId], references: [id], onDelete: Cascade)
+  room        Room?          @relation(fields: [roomId], references: [id], onDelete: SetNull)
+  sessions    ClassSession[]
+
+  @@index([dayOfWeek, startTime])
+  @@map("class_schedules")
+}
+
+model ClassSession {
+  id            String        @id @default(cuid())
+  classId       String
+  scheduleId    String?
+  sessionDate   DateTime
+  startTime     String
+  endTime       String
+  roomId        String?
+  status        SessionStatus @default(PLANNED)
+  lessonContent String?
+  homework      String?
+  generalNote   String?
+  completedAt   DateTime?
+
+  courseClass CourseClass         @relation(fields: [classId], references: [id], onDelete: Cascade)
+  schedule    ClassSchedule?      @relation(fields: [scheduleId], references: [id], onDelete: SetNull)
+  room        Room?               @relation(fields: [roomId], references: [id], onDelete: SetNull)
+  teachers    SessionTeacher[]
+  attendances Attendance[]
+  comments    StudentComment[]
+  attachments SessionAttachment[]
+
+  @@unique([classId, sessionDate, startTime])
+  @@index([sessionDate, status])
+  @@map("class_sessions")
+}
+
+model SessionAttachment {
+  id         String   @id @default(cuid())
+  sessionId  String
+  fileName   String
+  fileUrl    String
+  fileType   String?
+  uploadedAt DateTime @default(now())
+
+  session ClassSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId])
+  @@map("session_attachments")
+}
+
+model SessionTeacher {
+  id              String             @id @default(cuid())
+  sessionId       String
+  teacherUserId   String
+  role            SessionTeacherRole
+  actualStartTime String?
+  actualEndTime   String?
+  note            String?
+
+  session ClassSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  teacher User         @relation("SessionTeacherUser", fields: [teacherUserId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, teacherUserId, role])
+  @@map("session_teachers")
+}
+
+model Attendance {
+  id             String           @id @default(cuid())
+  sessionId      String
+  studentId      String
+  status         AttendanceStatus
+  note           String?
+  markedByUserId String?
+  markedAt       DateTime         @default(now())
+
+  session  ClassSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  student  Student      @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  markedBy User?        @relation("AttendanceMarker", fields: [markedByUserId], references: [id], onDelete: SetNull)
+
+  @@unique([sessionId, studentId])
+  @@index([studentId, status])
+  @@map("attendances")
+}
+
+model StudentComment {
+  id              String      @id @default(cuid())
+  studentId       String
+  classId         String?
+  sessionId       String?
+  examId          String?
+  commentType     CommentType
+  content         String
+  createdByUserId String
+  createdAt       DateTime    @default(now())
+
+  student     Student       @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  courseClass CourseClass?  @relation(fields: [classId], references: [id], onDelete: SetNull)
+  session     ClassSession? @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+  exam        Exam?         @relation(fields: [examId], references: [id], onDelete: SetNull)
+  createdBy   User          @relation("CommentCreator", fields: [createdByUserId], references: [id], onDelete: Restrict)
+
+  @@index([studentId, commentType])
+  @@map("student_comments")
+}
+
+model Exam {
+  id              String   @id @default(cuid())
+  classId         String
+  name            String
+  examDate        DateTime
+  examType        ExamType
+  maxScore        Decimal  @db.Decimal(5, 2)
+  description     String?
+  createdByUserId String
+  createdAt       DateTime @default(now())
+
+  courseClass CourseClass      @relation(fields: [classId], references: [id], onDelete: Cascade)
+  createdBy   User             @relation("ExamCreator", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  scores      Score[]
+  comments    StudentComment[]
+  attachments ExamAttachment[]
+
+  @@index([classId, examType])
+  @@map("exams")
+}
+
+model ExamAttachment {
+  id         String   @id @default(cuid())
+  examId     String
+  fileName   String
+  fileUrl    String
+  fileType   String?
+  uploadedAt DateTime @default(now())
+
+  exam Exam @relation(fields: [examId], references: [id], onDelete: Cascade)
+
+  @@index([examId])
+  @@map("exam_attachments")
+}
+
+model Score {
+  id              String   @id @default(cuid())
+  examId          String
+  studentId       String
+  score           Decimal  @db.Decimal(5, 2)
+  comment         String?
+  createdByUserId String
+  updatedByUserId String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  exam      Exam    @relation(fields: [examId], references: [id], onDelete: Cascade)
+  student   Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  createdBy User    @relation("ScoreCreator", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  updatedBy User?   @relation("ScoreUpdater", fields: [updatedByUserId], references: [id], onDelete: SetNull)
+
+  @@unique([examId, studentId])
+  @@map("scores")
+}
+
+model TuitionCharge {
+  id              String        @id @default(cuid())
+  studentId       String
+  classId         String?
+  amountDue       Decimal       @db.Decimal(12, 2)
+  amountPaid      Decimal       @default(0) @db.Decimal(12, 2)
+  discountAmount  Decimal       @default(0) @db.Decimal(12, 2)
+  dueDate         DateTime?
+  status          TuitionStatus @default(UNPAID)
+  note            String?
+  createdByUserId String?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  student     Student      @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  courseClass CourseClass? @relation(fields: [classId], references: [id], onDelete: SetNull)
+  createdBy   User?        @relation("TuitionChargeCreator", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  payments    Payment[]
+
+  @@index([status, dueDate])
+  @@map("tuition_charges")
+}
+
+model Payment {
+  id               String        @id @default(cuid())
+  tuitionChargeId  String
+  amount           Decimal       @db.Decimal(12, 2)
+  paymentDate      DateTime      @default(now())
+  method           PaymentMethod
+  receivedByUserId String?
+  note             String?
+
+  tuitionCharge TuitionCharge @relation(fields: [tuitionChargeId], references: [id], onDelete: Cascade)
+  receivedBy    User?         @relation("PaymentReceiver", fields: [receivedByUserId], references: [id], onDelete: SetNull)
+
+  @@index([paymentDate])
+  @@map("payments")
+}
+
+model SalaryRule {
+  id            String           @id @default(cuid())
+  staffUserId   String
+  classId       String?
+  workName      String?
+  staffRole     String?
+  salaryType    SalaryType
+  amount        Decimal?         @db.Decimal(12, 2)
+  description   String?
+  effectiveFrom DateTime
+  effectiveTo   DateTime?
+  status        SalaryRuleStatus @default(ACTIVE)
+
+  staffUser    User          @relation("SalaryRuleStaff", fields: [staffUserId], references: [id], onDelete: Cascade)
+  courseClass  CourseClass?  @relation(fields: [classId], references: [id], onDelete: SetNull)
+  payrollItems PayrollItem[]
+
+  @@index([staffUserId, status])
+  @@map("salary_rules")
+}
+
+model Payroll {
+  id               String        @id @default(cuid())
+  month            Int
+  year             Int
+  periodFrom       DateTime?
+  periodTo         DateTime?
+  status           PayrollStatus @default(DRAFT)
+  createdByUserId  String
+  approvedByUserId String?
+  paidByUserId     String?
+  createdAt        DateTime      @default(now())
+  approvedAt       DateTime?
+  paidAt           DateTime?
+  paidNote         String?
+
+  createdBy   User                @relation("PayrollCreator", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  approvedBy  User?               @relation("PayrollApprover", fields: [approvedByUserId], references: [id], onDelete: SetNull)
+  paidBy      User?               @relation("PayrollPayer", fields: [paidByUserId], references: [id], onDelete: SetNull)
+  items       PayrollItem[]
+  adjustments PayrollAdjustment[]
+
+  @@unique([month, year])
+  @@map("payrolls")
+}
+
+model PayrollItem {
+  id              String  @id @default(cuid())
+  payrollId       String
+  staffUserId     String
+  salaryRuleId    String?
+  classId         String?
+  sessionsCount   Int     @default(0)
+  hoursCount      Decimal @default(0) @db.Decimal(6, 2)
+  taskCount       Int     @default(0)
+  baseAmount      Decimal @default(0) @db.Decimal(12, 2)
+  allowanceAmount Decimal @default(0) @db.Decimal(12, 2)
+  deductionAmount Decimal @default(0) @db.Decimal(12, 2)
+  totalAmount     Decimal @default(0) @db.Decimal(12, 2)
+  note            String?
+
+  payroll     Payroll             @relation(fields: [payrollId], references: [id], onDelete: Cascade)
+  staffUser   User                @relation("PayrollItemStaff", fields: [staffUserId], references: [id], onDelete: Cascade)
+  salaryRule  SalaryRule?         @relation(fields: [salaryRuleId], references: [id], onDelete: SetNull)
+  courseClass CourseClass?        @relation(fields: [classId], references: [id], onDelete: SetNull)
+  adjustments PayrollAdjustment[]
+
+  @@index([staffUserId])
+  @@map("payroll_items")
+}
+
+model PayrollAdjustment {
+  id              String   @id @default(cuid())
+  payrollId       String
+  payrollItemId   String?
+  staffUserId     String
+  type            String
+  amount          Decimal  @db.Decimal(12, 2)
+  note            String?
+  createdByUserId String
+  createdAt       DateTime @default(now())
+
+  payroll     Payroll      @relation(fields: [payrollId], references: [id], onDelete: Cascade)
+  payrollItem PayrollItem? @relation(fields: [payrollItemId], references: [id], onDelete: SetNull)
+  staffUser   User         @relation("PayrollAdjustmentStaff", fields: [staffUserId], references: [id], onDelete: Cascade)
+  createdBy   User         @relation("PayrollAdjustmentCreator", fields: [createdByUserId], references: [id], onDelete: Restrict)
+
+  @@index([payrollId])
+  @@index([staffUserId])
+  @@map("payroll_adjustments")
+}
+
+model Notification {
+  id                String           @id @default(cuid())
+  recipientUserId   String?
+  recipientParentId String?
+  title             String
+  content           String
+  type              NotificationType @default(SYSTEM)
+  readAt            DateTime?
+  createdAt         DateTime         @default(now())
+
+  recipientUser   User?   @relation("NotificationUser", fields: [recipientUserId], references: [id], onDelete: Cascade)
+  recipientParent Parent? @relation("NotificationParent", fields: [recipientParentId], references: [id], onDelete: Cascade)
+
+  @@index([recipientUserId, readAt])
+  @@index([recipientParentId, readAt])
+  @@map("notifications")
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  userId     String?
+  action     String
+  entityType String
+  entityId   String?
+  beforeData Json?
+  afterData  Json?
+  ipAddress  String?
+  createdAt  DateTime @default(now())
+
+  user User? @relation("AuditLogUser", fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([entityType, entityId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
