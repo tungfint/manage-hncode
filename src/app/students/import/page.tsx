@@ -1,15 +1,19 @@
 import { Upload } from "lucide-react";
-import { importStudentsAction } from "@/app/actions";
+import {
+  confirmImportStudentsAction,
+  previewImportStudentsAction,
+} from "@/app/actions";
 import { AppShell } from "@/components/app-shell";
+import { ConfirmSubmitButton } from "@/components/confirm-submit-button";
 import { PageHeader } from "@/components/ui/page-header";
 import { requirePermission } from "@/lib/auth";
+import { getStudentImportPreview } from "@/lib/student-import-preview";
 
 type ImportStudentsPageProps = {
   searchParams?: Promise<{
-    imported?: string;
-    skipped?: string;
+    preview?: string;
+    result?: string;
     error?: string;
-    errors?: string;
   }>;
 };
 
@@ -18,6 +22,7 @@ const errorMessages: Record<string, string> = {
   sheet: "File Excel chưa có sheet dữ liệu.",
   headers:
     "File Excel thiếu cột bắt buộc. Cần có cột “Họ tên học viên”. Hãy tải file mẫu mới nhất.",
+  preview: "Không tìm thấy dữ liệu xem trước. Vui lòng upload lại file Excel.",
 };
 
 export default async function ImportStudentsPage({
@@ -25,15 +30,19 @@ export default async function ImportStudentsPage({
 }: ImportStudentsPageProps) {
   const session = await requirePermission("student.create");
   const params = await searchParams;
-  const rowErrors = params?.errors
-    ? decodeURIComponent(params.errors).split("||").filter(Boolean)
-    : [];
+  const preview = await getStudentImportPreview(params?.preview ?? params?.result);
+  const confirmAction = preview
+    ? confirmImportStudentsAction.bind(null, preview.token)
+    : undefined;
+  const importedRows = preview?.importedRows ?? [];
+  const importErrors = preview?.importErrors ?? [];
+  const isResult = Boolean(params?.result);
 
   return (
     <AppShell session={session}>
       <PageHeader
         title="Import học viên từ Excel"
-        description="Dùng file mẫu tiếng Việt để nhập nhanh nhiều học viên và phụ huynh."
+        description="Upload file mẫu, kiểm tra lỗi theo từng dòng, sau đó xác nhận import vào hệ thống."
         action={
           <a
             href="/students"
@@ -44,33 +53,24 @@ export default async function ImportStudentsPage({
         }
       />
 
-      {params?.imported ? (
-        <div className="rounded-md border border-teal-200 bg-teal-50 px-3 py-2 text-sm text-teal-800">
-          Đã import {params.imported} học viên
-          {params.skipped ? `, bỏ qua ${params.skipped} dòng trùng.` : "."}
-        </div>
-      ) : null}
-
       {params?.error ? (
         <div className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800">
           {errorMessages[params.error] ?? "Không thể import file Excel."}
         </div>
       ) : null}
 
-      {rowErrors.length ? (
-        <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-          <p className="font-medium">Các dòng cần kiểm tra lại:</p>
-          <ul className="mt-2 list-disc space-y-1 pl-5">
-            {rowErrors.map((error) => (
-              <li key={error}>{error}</li>
-            ))}
-          </ul>
+      {isResult && preview ? (
+        <div className="rounded-md border border-teal-200 bg-teal-50 px-3 py-2 text-sm text-teal-800">
+          Đã import {importedRows.length} học viên.{" "}
+          {importErrors.length
+            ? `${importErrors.length} dòng phát sinh lỗi khi xác nhận.`
+            : "Không có lỗi phát sinh khi xác nhận."}
         </div>
       ) : null}
 
-      <section className="grid gap-5 lg:grid-cols-[1fr_420px]">
+      <section className="grid min-w-0 gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">
         <form
-          action={importStudentsAction}
+          action={previewImportStudentsAction}
           className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm"
         >
           <div className="mb-5 grid size-12 place-items-center rounded-md bg-[#e8f7fc] text-[#08a7dc]">
@@ -78,7 +78,8 @@ export default async function ImportStudentsPage({
           </div>
           <h2 className="text-lg font-semibold">Chọn file Excel</h2>
           <p className="mt-1 text-sm text-slate-500">
-            Hỗ trợ `.xlsx`. Dòng đầu tiên phải là tiêu đề cột tiếng Việt theo mẫu.
+            Hỗ trợ `.xlsx`. Dòng đầu tiên phải là tiêu đề cột tiếng Việt theo
+            mẫu. Cột “Mã lớp học” dùng để tự động xếp học viên vào lớp.
           </p>
           <input
             name="file"
@@ -91,17 +92,17 @@ export default async function ImportStudentsPage({
             type="submit"
             className="mt-5 h-10 rounded-md bg-[#17215c] px-4 text-sm font-medium text-white hover:bg-[#25308d]"
           >
-            Import học viên
+            Kiểm tra dữ liệu
           </button>
         </form>
 
         <aside className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
           <h2 className="font-semibold">File mẫu tiếng Việt</h2>
           <p className="mt-2 text-sm leading-6 text-slate-600">
-            Các cột đang hỗ trợ: Họ tên học viên, Ngày sinh, Giới tính, Số điện
-            thoại học viên, Email học viên, Trường học, Lớp ở trường, Lớp ở CLB,
-            Tài khoản HNCode, Trạng thái, Họ tên phụ huynh, Số điện thoại phụ
-            huynh, Email phụ huynh, Quan hệ, Ghi chú.
+            Cột hỗ trợ: Họ tên học viên, Ngày sinh, Giới tính, Số điện thoại
+            học viên, Email học viên, Trường học, Lớp ở trường, Mã lớp học,
+            Tài khoản HNCode, Trình độ đầu vào, Trạng thái, Họ tên phụ huynh,
+            Số điện thoại phụ huynh, Email phụ huynh, Quan hệ, Ghi chú.
           </p>
           <a
             href="/students/import/template"
@@ -111,6 +112,100 @@ export default async function ImportStudentsPage({
           </a>
         </aside>
       </section>
+
+      {preview ? (
+        <section className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="font-semibold">
+                {isResult ? "Kết quả import" : "Xem trước dữ liệu import"}
+              </h2>
+              <p className="mt-1 text-sm text-zinc-500">
+                File: {preview.fileName} · Hợp lệ {preview.validRows.length} dòng ·
+                Lỗi {preview.errors.length + importErrors.length} dòng
+              </p>
+            </div>
+            {!isResult && confirmAction && preview.validRows.length ? (
+              <form action={confirmAction}>
+                <ConfirmSubmitButton
+                  message={`Xác nhận import ${preview.validRows.length} học viên hợp lệ?`}
+                  className="h-10 rounded-md bg-[#17215c] px-4 text-sm font-medium text-white hover:bg-[#25308d]"
+                >
+                  Xác nhận import
+                </ConfirmSubmitButton>
+              </form>
+            ) : null}
+          </div>
+
+          <div className="mt-4 grid gap-4 xl:grid-cols-2">
+            <div className="min-w-0 rounded-md border border-teal-100">
+              <div className="border-b border-teal-100 bg-teal-50 px-3 py-2 text-sm font-semibold text-teal-900">
+                Dòng hợp lệ
+              </div>
+              <div className="max-h-[420px] overflow-auto">
+                <table className="w-full min-w-[720px] text-left text-sm">
+                  <thead className="bg-white text-zinc-500">
+                    <tr>
+                      <th className="px-3 py-2 font-medium">Dòng</th>
+                      <th className="px-3 py-2 font-medium">Học viên</th>
+                      <th className="px-3 py-2 font-medium">Email</th>
+                      <th className="px-3 py-2 font-medium">Mã lớp</th>
+                      <th className="px-3 py-2 font-medium">Phụ huynh</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-zinc-100">
+                    {(isResult ? importedRows : preview.validRows).map((row) => (
+                      <tr key={`${row.rowNumber}-${row.email ?? row.fullName}`}>
+                        <td className="px-3 py-2 text-zinc-500">{row.rowNumber}</td>
+                        <td className="px-3 py-2 font-medium">{row.fullName}</td>
+                        <td className="px-3 py-2 text-zinc-600">{row.email ?? "-"}</td>
+                        <td className="px-3 py-2 text-zinc-600">
+                          {row.classCode
+                            ? `${row.classCode}${row.className ? ` · ${row.className}` : ""}`
+                            : "Chưa xếp lớp"}
+                        </td>
+                        <td className="px-3 py-2 text-zinc-600">
+                          {row.parentName ?? row.parentPhone ?? "-"}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {!(isResult ? importedRows : preview.validRows).length ? (
+                  <p className="p-3 text-sm text-zinc-500">Không có dòng hợp lệ.</p>
+                ) : null}
+              </div>
+            </div>
+
+            <div className="min-w-0 rounded-md border border-amber-100">
+              <div className="border-b border-amber-100 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-950">
+                Dòng cần sửa
+              </div>
+              <div className="max-h-[420px] overflow-auto">
+                <table className="w-full min-w-[560px] text-left text-sm">
+                  <thead className="bg-white text-zinc-500">
+                    <tr>
+                      <th className="px-3 py-2 font-medium">Dòng</th>
+                      <th className="px-3 py-2 font-medium">Lỗi</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-zinc-100">
+                    {[...preview.errors, ...importErrors].map((error, index) => (
+                      <tr key={`${error.rowNumber}-${index}`}>
+                        <td className="px-3 py-2 text-zinc-500">{error.rowNumber}</td>
+                        <td className="px-3 py-2 text-zinc-700">{error.message}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {preview.errors.length + importErrors.length === 0 ? (
+                  <p className="p-3 text-sm text-zinc-500">Không có dòng lỗi.</p>
+                ) : null}
+              </div>
+            </div>
+          </div>
+        </section>
+      ) : null}
     </AppShell>
   );
 }

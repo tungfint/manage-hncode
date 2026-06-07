@@ -8,6 +8,9 @@ import { formatCurrency, formatDate } from "@/lib/format";
 import { salaryTypeLabels, staffTypeLabels } from "@/lib/labels";
 import { prisma } from "@/lib/prisma";
 
+const RULE_LIMIT = 120;
+const OPTION_LIMIT = 200;
+
 type SalaryRulesPageProps = {
   searchParams?: Promise<{ created?: string }>;
 };
@@ -26,13 +29,19 @@ export default async function SalaryRulesPage({
         courseClass: true,
       },
       orderBy: { effectiveFrom: "desc" },
+      take: RULE_LIMIT,
     }),
     prisma.user.findMany({
       where: { staffProfile: { isNot: null } },
-      include: { staffProfile: true },
+      select: { id: true, name: true, staffProfile: true },
       orderBy: { name: "asc" },
+      take: OPTION_LIMIT,
     }),
-    prisma.courseClass.findMany({ orderBy: { name: "asc" } }),
+    prisma.courseClass.findMany({
+      select: { id: true, name: true },
+      orderBy: { name: "asc" },
+      take: OPTION_LIMIT,
+    }),
   ]);
 
   return (

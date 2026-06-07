@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { AppShell } from "@/components/app-shell";
 import { PageHeader } from "@/components/ui/page-header";
 import { requirePermission } from "@/lib/auth";
@@ -19,7 +20,15 @@ export default async function RolesPage() {
     <AppShell session={session}>
       <PageHeader
         title="Vai trò & quyền"
-        description="Vai trò là bộ quyền mặc định; quyền riêng từng tài khoản nằm ở bảng user_permissions."
+        description="Vai trò là bộ quyền mặc định. Muốn cấp thêm hoặc thu hồi quyền riêng từng tài khoản, mở trang Tài khoản & quyền."
+        action={
+          <Link
+            href="/admin/users"
+            className="inline-flex h-10 items-center rounded-md border border-zinc-200 bg-white px-4 text-sm font-medium hover:bg-zinc-50"
+          >
+            Tài khoản & quyền
+          </Link>
+        }
       />
       <div className="grid gap-4 lg:grid-cols-2">
         {roles.map((role) => (
@@ -36,6 +45,7 @@ export default async function RolesPage() {
                 <span
                   key={item.id}
                   className="rounded-md bg-zinc-100 px-2 py-1 text-xs text-zinc-700"
+                  title={item.permission.description ?? item.permission.name}
                 >
                   {item.permission.code}
                 </span>

@@ -1,20 +1,20 @@
 import {
+  AlertCircle,
+  ArrowRight,
   Banknote,
   BookOpenCheck,
   CalendarDays,
   ClipboardCheck,
   GraduationCap,
   ReceiptText,
+  UsersRound,
   WalletCards,
 } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
 import { Badge } from "@/components/ui/badge";
-import { PageHeader } from "@/components/ui/page-header";
 import { can, getSessionOrRedirect } from "@/lib/auth";
 import { formatCurrency, formatDate } from "@/lib/format";
-import {
-  sessionStatusLabels,
-} from "@/lib/labels";
+import { sessionStatusLabels } from "@/lib/labels";
 import { prisma } from "@/lib/prisma";
 
 function startOfDay(date: Date) {
@@ -27,6 +27,10 @@ function endOfDay(date: Date) {
   const value = new Date(date);
   value.setHours(23, 59, 59, 999);
   return value;
+}
+
+function money(value: unknown) {
+  return Number(value?.toString?.() ?? 0);
 }
 
 export default async function DashboardPage() {
@@ -51,15 +55,18 @@ export default async function DashboardPage() {
 
   const [
     studentsCount,
+    parentsCount,
     activeClassesCount,
     todaySessions,
     pendingAttendances,
+    upcomingSessions,
     tuitionSummary,
     overdueTuitionCount,
     payrollDraftCount,
     recentPayments,
   ] = await Promise.all([
     can(session, "student.view") ? prisma.student.count() : Promise.resolve(0),
+    can(session, "parent.view") ? prisma.parent.count() : Promise.resolve(0),
     can(session, "class.view")
       ? prisma.courseClass.count({
           where: {
@@ -102,6 +109,23 @@ export default async function DashboardPage() {
           },
         })
       : Promise.resolve(0),
+    can(session, "session.view")
+      ? prisma.classSession.findMany({
+          where: {
+            sessionDate: {
+              gt: todayEnd,
+            },
+            status: "PLANNED",
+            courseClass: classScope,
+          },
+          include: {
+            courseClass: true,
+            room: true,
+          },
+          orderBy: [{ sessionDate: "asc" }, { startTime: "asc" }],
+          take: 4,
+        })
+      : Promise.resolve([]),
     can(session, "tuition.view")
       ? prisma.tuitionCharge.aggregate({
           _sum: {
@@ -140,42 +164,114 @@ export default async function DashboardPage() {
   ]);
 
   const totalDebt =
-    Number(tuitionSummary._sum.amountDue?.toString() ?? 0) -
-    Number(tuitionSummary._sum.amountPaid?.toString() ?? 0);
+    money(tuitionSummary._sum.amountDue) - money(tuitionSummary._sum.amountPaid);
 
   const stats = [
     {
       label: "Học viên",
       value: studentsCount,
-      hint: "Đang quản lý",
+      hint: parentsCount ? `${parentsCount} phụ huynh liên kết` : "Hồ sơ đang quản lý",
       icon: GraduationCap,
+      tone: "cyan",
+      href: "/students",
       show: can(session, "student.view"),
     },
     {
-      label: "Lớp đang học",
+      label: "Lớp đang hoạt động",
       value: activeClassesCount,
       hint: isTeacher ? "Lớp được phân công" : "Toàn trung tâm",
       icon: BookOpenCheck,
+      tone: "blue",
+      href: "/classes",
       show: can(session, "class.view"),
     },
     {
-      label: "Buổi hôm nay",
+      label: "Buổi học hôm nay",
       value: todaySessions.length,
       hint: `${pendingAttendances} buổi cần điểm danh`,
       icon: CalendarDays,
+      tone: "amber",
+      href: "/sessions",
       show: can(session, "session.view"),
     },
     {
-      label: "Công nợ",
-      value: formatCurrency(totalDebt),
-      hint: `${overdueTuitionCount} khoản cần theo dõi`,
+      label: "Công nợ cần theo dõi",
+      value: formatCurrency(Math.max(totalDebt, 0)),
+      hint: `${overdueTuitionCount} khoản chưa hoàn tất`,
       icon: Banknote,
+      tone: "rose",
+      href: "/tuition",
       show: can(session, "tuition.view"),
+    },
+  ].filter((item) => item.show);
+
+  const tasks = [
+    {
+      title: "Điểm danh buổi học hôm nay",
+      value: pendingAttendances,
+      href: "/sessions",
+      show: can(session, "attendance.manage"),
+      tone: pendingAttendances ? "warning" : "success",
+      description: pendingAttendances
+        ? "Có buổi học đang chờ xác nhận điểm danh."
+        : "Không có buổi học cần điểm danh lúc này.",
+    },
+    {
+      title: "Khoản học phí cần xử lý",
+      value: overdueTuitionCount,
+      href: "/tuition",
+      show: can(session, "tuition.view"),
+      tone: overdueTuitionCount ? "danger" : "success",
+      description: overdueTuitionCount
+        ? "Có khoản chưa thu đủ hoặc quá hạn."
+        : "Không có công nợ nổi bật.",
+    },
+    {
+      title: "Bảng lương chờ xử lý",
+      value: payrollDraftCount,
+      href: "/payrolls",
+      show: can(session, "salary.view"),
+      tone: payrollDraftCount ? "warning" : "success",
+      description: payrollDraftCount
+        ? "Có bảng lương nháp hoặc chờ duyệt."
+        : "Không có bảng lương cần xử lý.",
+    },
+  ].filter((item) => item.show);
+
+  const quickActions = [
+    {
+      label: "Thêm học viên",
+      href: "/students/new",
+      icon: GraduationCap,
+      show: can(session, "student.create"),
+    },
+    {
+      label: "Import học viên",
+      href: "/students/import",
+      icon: UsersRound,
+      show: can(session, "student.create"),
+    },
+    {
+      label: "Mở buổi học",
+      href: "/sessions",
+      icon: ClipboardCheck,
+      show: can(session, "session.view"),
+    },
+    {
+      label: "Thu học phí",
+      href: "/tuition",
+      icon: ReceiptText,
+      show: can(session, "tuition.manage"),
+    },
+    {
+      label: "Nhập điểm",
+      href: "/exams",
+      icon: BookOpenCheck,
+      show: can(session, "score.manage"),
     },
     {
       label: "Bảng lương",
-      value: payrollDraftCount,
-      hint: "Nháp / chờ duyệt",
+      href: "/payrolls",
       icon: WalletCards,
       show: can(session, "salary.view"),
     },
@@ -183,54 +279,107 @@ export default async function DashboardPage() {
 
   return (
     <AppShell session={session}>
-      <PageHeader
-        title={
-          isAccountant
-            ? "Dashboard kế toán"
-            : isTeacher
-              ? "Dashboard giáo viên"
-              : "Dashboard quản lý"
-        }
-        description="Tổng quan nhanh theo vai trò và quyền của tài khoản."
-      />
+      <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="min-w-0">
+            <p className="text-sm font-medium text-[#08a7dc]">
+              {formatDate(today)}
+            </p>
+            <h2 className="mt-1 text-2xl font-semibold text-slate-950">
+              {isAccountant
+                ? "Dashboard kế toán"
+                : isTeacher
+                  ? "Dashboard giáo viên"
+                  : "Dashboard quản lý"}
+            </h2>
+            <p className="mt-1 max-w-2xl text-sm leading-6 text-slate-600">
+              Theo dõi nhanh lịch học, điểm danh, công nợ và các việc cần xử lý
+              theo quyền của tài khoản.
+            </p>
+          </div>
+          {quickActions.length ? (
+            <div className="flex flex-wrap gap-2">
+              {quickActions.slice(0, 3).map((item) => {
+                const Icon = item.icon;
+
+                return (
+                  <a
+                    key={item.href}
+                    href={item.href}
+                    className="inline-flex h-10 items-center gap-2 rounded-md border border-slate-200 bg-slate-50 px-3 text-sm font-medium text-slate-700 hover:border-yellow-300 hover:bg-[#fff7cc] hover:text-[#17215c]"
+                  >
+                    <Icon size={16} aria-hidden="true" />
+                    {item.label}
+                  </a>
+                );
+              })}
+            </div>
+          ) : null}
+        </div>
+      </section>
 
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {stats.map((item) => {
           const Icon = item.icon;
 
           return (
-            <article
+            <a
               key={item.label}
-              className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm"
+              href={item.href}
+              className="group rounded-lg border border-slate-200 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:border-cyan-200 hover:shadow-md"
             >
               <div className="mb-4 flex items-start justify-between gap-3">
                 <div>
-                  <p className="text-sm text-zinc-500">{item.label}</p>
-                  <p className="mt-1 text-2xl font-semibold text-zinc-950">
+                  <p className="text-sm text-slate-500">{item.label}</p>
+                  <p className="mt-1 text-2xl font-semibold text-slate-950">
                     {item.value}
                   </p>
                 </div>
-                <div className="grid size-10 place-items-center rounded-md border border-teal-200 bg-teal-50 text-teal-700">
+                <div
+                  className={[
+                    "grid size-10 place-items-center rounded-md border",
+                    item.tone === "amber"
+                      ? "border-yellow-200 bg-[#fff7cc] text-[#17215c]"
+                      : item.tone === "rose"
+                        ? "border-rose-200 bg-rose-50 text-rose-700"
+                        : "border-cyan-200 bg-cyan-50 text-cyan-700",
+                  ].join(" ")}
+                >
                   <Icon size={20} aria-hidden="true" />
                 </div>
               </div>
-              <p className="text-sm text-zinc-600">{item.hint}</p>
-            </article>
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-sm text-slate-600">{item.hint}</p>
+                <ArrowRight
+                  size={16}
+                  className="text-slate-300 transition group-hover:text-[#08a7dc]"
+                  aria-hidden="true"
+                />
+              </div>
+            </a>
           );
         })}
       </section>
 
-      <section className="grid gap-5 xl:grid-cols-[1.25fr_0.9fr]">
-        <div className="rounded-lg border border-zinc-200 bg-white shadow-sm">
-          <div className="border-b border-zinc-200 p-4">
-            <h2 className="font-semibold">Lịch học hôm nay</h2>
-            <p className="text-sm text-zinc-500">
-              Ưu tiên thao tác điểm danh và ghi nội dung buổi học.
-            </p>
+      <section className="grid gap-5 xl:grid-cols-[minmax(0,1.35fr)_minmax(320px,0.75fr)]">
+        <div className="rounded-lg border border-slate-200 bg-white shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-4 py-3">
+            <div>
+              <h2 className="font-semibold text-slate-950">Hoạt động hôm nay</h2>
+              <p className="text-sm text-slate-500">
+                Ưu tiên mở buổi học để điểm danh và ghi nhận nội dung.
+              </p>
+            </div>
+            <a
+              href="/schedule"
+              className="text-sm font-medium text-[#17215c] hover:underline"
+            >
+              Xem lịch học
+            </a>
           </div>
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[720px] text-left text-sm">
-              <thead className="bg-zinc-50 text-zinc-500">
+            <table className="w-full min-w-[760px] text-left text-sm">
+              <thead className="bg-slate-50 text-slate-500">
                 <tr>
                   <th className="px-4 py-3 font-medium">Giờ</th>
                   <th className="px-4 py-3 font-medium">Lớp</th>
@@ -240,17 +389,21 @@ export default async function DashboardPage() {
                   <th className="px-4 py-3 font-medium">Thao tác</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-zinc-100">
+              <tbody className="divide-y divide-slate-100">
                 {todaySessions.map((item) => (
-                  <tr key={item.id}>
+                  <tr key={item.id} className="hover:bg-slate-50/70">
                     <td className="px-4 py-4 font-medium">
                       {item.startTime} - {item.endTime}
                     </td>
-                    <td className="px-4 py-4">{item.courseClass.name}</td>
-                    <td className="px-4 py-4 text-zinc-600">
+                    <td className="px-4 py-4">
+                      <p className="font-medium text-slate-900">
+                        {item.courseClass.name}
+                      </p>
+                    </td>
+                    <td className="px-4 py-4 text-slate-600">
                       {item.room?.name ?? "-"}
                     </td>
-                    <td className="px-4 py-4 text-zinc-600">
+                    <td className="px-4 py-4 text-slate-600">
                       {item.teachers.map((teacher) => teacher.teacher.name).join(", ") ||
                         "-"}
                     </td>
@@ -261,7 +414,7 @@ export default async function DashboardPage() {
                     </td>
                     <td className="px-4 py-4">
                       <a
-                        className="font-medium text-teal-700 hover:text-teal-800"
+                        className="font-medium text-[#08a7dc] hover:text-[#17215c]"
                         href={`/sessions/${item.id}/attendance`}
                       >
                         Mở buổi học
@@ -271,8 +424,8 @@ export default async function DashboardPage() {
                 ))}
                 {!todaySessions.length ? (
                   <tr>
-                    <td className="px-4 py-8 text-center text-zinc-500" colSpan={6}>
-                      Chưa có buổi học trong hôm nay.
+                    <td className="px-4 py-10 text-center text-slate-500" colSpan={6}>
+                      Hôm nay chưa có buổi học nào trong phạm vi quyền của bạn.
                     </td>
                   </tr>
                 ) : null}
@@ -281,97 +434,151 @@ export default async function DashboardPage() {
           </div>
         </div>
 
-        <div className="rounded-lg border border-zinc-200 bg-white shadow-sm">
-          <div className="border-b border-zinc-200 p-4">
-            <h2 className="font-semibold">
-              {can(session, "payment.view") ? "Thanh toán gần đây" : "Việc cần xử lý"}
-            </h2>
-            <p className="text-sm text-zinc-500">
-              {can(session, "payment.view")
-                ? "Các khoản thu mới ghi nhận."
-                : "Các tác vụ thường dùng theo vai trò."}
-            </p>
+        <div className="grid gap-5">
+          <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <h2 className="font-semibold text-slate-950">Việc cần xử lý</h2>
+                <p className="text-sm text-slate-500">Tác vụ nổi bật theo quyền.</p>
+              </div>
+              <AlertCircle size={20} className="text-[#08a7dc]" aria-hidden="true" />
+            </div>
+            <div className="mt-4 space-y-3">
+              {tasks.map((task) => (
+                <a
+                  key={task.title}
+                  href={task.href}
+                  className="block rounded-md border border-slate-200 bg-slate-50 px-3 py-3 hover:border-yellow-300 hover:bg-[#fff9d8]"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-slate-900">
+                        {task.title}
+                      </p>
+                      <p className="mt-1 text-xs leading-5 text-slate-500">
+                        {task.description}
+                      </p>
+                    </div>
+                    <Badge tone={task.tone as "success" | "warning" | "danger"}>
+                      {task.value}
+                    </Badge>
+                  </div>
+                </a>
+              ))}
+              {!tasks.length ? (
+                <p className="rounded-md border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-500">
+                  Chưa có tác vụ nổi bật theo quyền hiện tại.
+                </p>
+              ) : null}
+            </div>
+          </div>
+
+          <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+            <h2 className="font-semibold text-slate-950">Buổi sắp tới</h2>
+            <div className="mt-3 space-y-3">
+              {upcomingSessions.map((item) => (
+                <a
+                  key={item.id}
+                  href={`/sessions/${item.id}/attendance`}
+                  className="block rounded-md border border-slate-100 px-3 py-2 hover:bg-slate-50"
+                >
+                  <p className="truncate text-sm font-medium text-slate-900">
+                    {item.courseClass.name}
+                  </p>
+                  <p className="mt-1 text-xs text-slate-500">
+                    {formatDate(item.sessionDate)} · {item.startTime} - {item.endTime}
+                    {item.room?.name ? ` · ${item.room.name}` : ""}
+                  </p>
+                </a>
+              ))}
+              {!upcomingSessions.length ? (
+                <p className="text-sm text-slate-500">Chưa có buổi học sắp tới.</p>
+              ) : null}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="grid gap-5 xl:grid-cols-[minmax(320px,0.9fr)_minmax(0,1.1fr)]">
+        <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+          <h2 className="font-semibold text-slate-950">Lối tắt nhanh</h2>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            {quickActions.map((item) => {
+              const Icon = item.icon;
+
+              return (
+                <a
+                  key={item.href}
+                  href={item.href}
+                  className="flex items-center gap-3 rounded-md border border-slate-200 bg-white px-3 py-3 text-sm font-medium text-slate-700 hover:border-cyan-200 hover:bg-cyan-50/60 hover:text-[#17215c]"
+                >
+                  <span className="grid size-9 place-items-center rounded-md bg-[#e8f7fc] text-[#08a7dc]">
+                    <Icon size={18} aria-hidden="true" />
+                  </span>
+                  {item.label}
+                </a>
+              );
+            })}
+            {!quickActions.length ? (
+              <p className="text-sm text-slate-500">Chưa có lối tắt phù hợp.</p>
+            ) : null}
+          </div>
+        </div>
+
+        <div className="rounded-lg border border-slate-200 bg-white shadow-sm">
+          <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-4 py-3">
+            <div>
+              <h2 className="font-semibold text-slate-950">
+                {can(session, "payment.view") ? "Thanh toán gần đây" : "Ghi chú vận hành"}
+              </h2>
+              <p className="text-sm text-slate-500">
+                {can(session, "payment.view")
+                  ? "Các khoản thu mới ghi nhận."
+                  : "Thông tin tóm tắt theo quyền hiện tại."}
+              </p>
+            </div>
+            {can(session, "payment.view") ? (
+              <a
+                href="/payments"
+                className="text-sm font-medium text-[#17215c] hover:underline"
+              >
+                Xem tất cả
+              </a>
+            ) : null}
           </div>
 
           {can(session, "payment.view") ? (
-            <div className="divide-y divide-zinc-100">
+            <div className="divide-y divide-slate-100">
               {recentPayments.map((payment) => (
-                <div key={payment.id} className="flex items-center justify-between gap-3 p-4">
+                <div
+                  key={payment.id}
+                  className="flex items-center justify-between gap-3 px-4 py-3"
+                >
                   <div className="min-w-0">
-                    <p className="truncate text-sm font-medium">
+                    <p className="truncate text-sm font-medium text-slate-900">
                       {payment.tuitionCharge.student.fullName}
                     </p>
-                    <p className="truncate text-xs text-zinc-500">
+                    <p className="truncate text-xs text-slate-500">
                       {payment.tuitionCharge.courseClass?.name ?? "Khoản thu"} ·{" "}
                       {formatDate(payment.paymentDate)}
                     </p>
                   </div>
-                  <span className="text-sm font-semibold text-teal-700">
+                  <span className="shrink-0 text-sm font-semibold text-emerald-700">
                     {formatCurrency(payment.amount)}
                   </span>
                 </div>
               ))}
               {!recentPayments.length ? (
-                <p className="p-4 text-sm text-zinc-500">Chưa có thanh toán.</p>
+                <p className="p-4 text-sm text-slate-500">Chưa có thanh toán.</p>
               ) : null}
             </div>
           ) : (
-            <div className="grid gap-3 p-4">
-              {can(session, "attendance.manage") ? (
-                <a className="rounded-lg border border-zinc-200 p-3 text-sm hover:bg-zinc-50" href="/sessions">
-                  Điểm danh buổi học
-                </a>
-              ) : null}
-              {can(session, "score.manage") ? (
-                <a className="rounded-lg border border-zinc-200 p-3 text-sm hover:bg-zinc-50" href="/exams">
-                  Nhập điểm kiểm tra
-                </a>
-              ) : null}
-              {can(session, "comment.manage") ? (
-                <a className="rounded-lg border border-zinc-200 p-3 text-sm hover:bg-zinc-50" href="/sessions">
-                  Nhận xét học viên
-                </a>
-              ) : null}
+            <div className="p-4 text-sm leading-6 text-slate-600">
+              Hệ thống chỉ hiển thị chức năng phù hợp với quyền của bạn. Sử dụng
+              sidebar hoặc lối tắt nhanh để tiếp tục công việc.
             </div>
           )}
         </div>
-      </section>
-
-      <section className="grid gap-5 xl:grid-cols-3">
-        <a
-          href="/students"
-          className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm hover:bg-zinc-50"
-        >
-          <GraduationCap className="mb-3 text-teal-700" size={22} />
-          <h2 className="font-semibold">Tra cứu học viên</h2>
-          <p className="mt-1 text-sm text-zinc-500">
-            Tìm hồ sơ, phụ huynh, lớp đang học và lịch sử học phí.
-          </p>
-        </a>
-        <a
-          href="/sessions"
-          className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm hover:bg-zinc-50"
-        >
-          <ClipboardCheck className="mb-3 text-teal-700" size={22} />
-          <h2 className="font-semibold">Mở buổi học</h2>
-          <p className="mt-1 text-sm text-zinc-500">
-            Điểm danh, ghi nội dung, bài tập và nhận xét ngay một màn hình.
-          </p>
-        </a>
-        <a
-          href={can(session, "tuition.manage") ? "/tuition" : "/schedule"}
-          className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm hover:bg-zinc-50"
-        >
-          <ReceiptText className="mb-3 text-teal-700" size={22} />
-          <h2 className="font-semibold">
-            {can(session, "tuition.manage") ? "Thu học phí" : "Xem lịch học"}
-          </h2>
-          <p className="mt-1 text-sm text-zinc-500">
-            {can(session, "tuition.manage")
-              ? "Ghi nhận thanh toán và cập nhật công nợ."
-              : "Theo dõi lịch lớp và phòng học được phân công."}
-          </p>
-        </a>
       </section>
     </AppShell>
   );

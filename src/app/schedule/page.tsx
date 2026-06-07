@@ -7,6 +7,8 @@ import { formatDate, toSearch } from "@/lib/format";
 import { prisma } from "@/lib/prisma";
 import { ensureUpcomingSessions } from "@/lib/sessions";
 
+const SCHEDULE_LIMIT = 200;
+
 const dayLabels = ["", "Thứ 2", "Thứ 3", "Thứ 4", "Thứ 5", "Thứ 6", "Thứ 7", "Chủ nhật"];
 
 type SchedulePageProps = {
@@ -62,18 +64,25 @@ export default async function SchedulePage({ searchParams }: SchedulePageProps) 
     },
     include: {
       courseClass: {
-        include: {
+        select: {
+          id: true,
+          name: true,
           teachers: {
             where: { status: "ACTIVE" },
-            include: { teacher: true },
+            include: { teacher: { select: { id: true, name: true } } },
           },
         },
       },
       room: {
-        include: { branch: true },
+        select: {
+          id: true,
+          name: true,
+          branch: { select: { id: true, name: true } },
+        },
       },
     },
     orderBy: [{ dayOfWeek: "asc" }, { startTime: "asc" }],
+    take: SCHEDULE_LIMIT,
   });
 
   return (

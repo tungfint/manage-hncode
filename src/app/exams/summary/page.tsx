@@ -8,6 +8,9 @@ import { getAccessibleClassIds } from "@/lib/data-scope";
 import { formatDate, toSearch } from "@/lib/format";
 import { prisma } from "@/lib/prisma";
 
+const CLASS_OPTION_LIMIT = 200;
+const ENROLLMENT_LIMIT = 300;
+
 type ScoreSummaryPageProps = {
   searchParams?: Promise<{
     classId?: string;
@@ -30,7 +33,9 @@ export default async function ScoreSummaryPage({
   const accessibleClassIds = await getAccessibleClassIds(session, "score.view");
   const classes = await prisma.courseClass.findMany({
     where: accessibleClassIds ? { id: { in: accessibleClassIds } } : {},
+    select: { id: true, classCode: true, name: true },
     orderBy: { name: "asc" },
+    take: CLASS_OPTION_LIMIT,
   });
   const selectedClassId =
     classes.find((item) => item.id === requestedClassId)?.id ?? classes[0]?.id ?? "";
@@ -39,23 +44,32 @@ export default async function ScoreSummaryPage({
     ? await Promise.all([
         prisma.exam.findMany({
           where: { classId: selectedClassId },
+          select: { id: true, name: true, examDate: true },
           orderBy: { examDate: "asc" },
         }),
         prisma.classStudent.findMany({
           where: { classId: selectedClassId, status: "ACTIVE" },
           include: {
             student: {
-              include: {
+              select: {
+                id: true,
+                fullName: true,
                 scores: {
                   where: {
                     exam: { classId: selectedClassId },
                   },
-                  include: { exam: true },
+                  select: {
+                    id: true,
+                    examId: true,
+                    score: true,
+                    exam: { select: { id: true, examDate: true } },
+                  },
                 },
               },
             },
           },
           orderBy: { student: { fullName: "asc" } },
+          take: ENROLLMENT_LIMIT,
         }),
       ])
     : [[], []];
@@ -129,7 +143,7 @@ export default async function ScoreSummaryPage({
         >
           {classes.map((item) => (
             <option key={item.id} value={item.id}>
-              {item.name}
+              {item.classCode} · {item.name}
             </option>
           ))}
         </select>
@@ -156,12 +170,14 @@ export default async function ScoreSummaryPage({
         </button>
       </form>
       {selectedClassId && exams.length ? (
-        <div className="overflow-x-auto rounded-lg border border-zinc-200 bg-white shadow-sm">
+        <div className="max-w-full overflow-x-auto rounded-lg border border-zinc-200 bg-white shadow-sm">
           <table className="w-full min-w-[1080px] text-left text-sm">
             <thead className="bg-zinc-50 text-zinc-500">
               <tr>
                 <th className="px-4 py-3 font-medium">Hạng</th>
-                <th className="px-4 py-3 font-medium">Học viên</th>
+                <th className="sticky left-0 bg-zinc-50 px-4 py-3 font-medium">
+                  Học viên
+                </th>
                 {exams.map((exam) => (
                   <th key={exam.id} className="px-4 py-3 font-medium">
                     <Link
@@ -186,7 +202,7 @@ export default async function ScoreSummaryPage({
                   <td className="px-4 py-4">
                     <Badge tone={index < 3 ? "success" : "default"}>#{index + 1}</Badge>
                   </td>
-                  <td className="px-4 py-4 font-medium">
+                  <td className="sticky left-0 bg-white px-4 py-4 font-medium">
                     {row.enrollment.student.fullName}
                   </td>
                   {exams.map((exam) => (

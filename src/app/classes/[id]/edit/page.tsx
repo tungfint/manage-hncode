@@ -8,17 +8,24 @@ import { canAccessClass } from "@/lib/data-scope";
 import { classStatusLabels } from "@/lib/labels";
 import { prisma } from "@/lib/prisma";
 
+const OPTION_LIMIT = 200;
+
 function dateValue(value: Date | null) {
   return value ? value.toISOString().slice(0, 10) : "";
 }
 
 type EditClassPageProps = {
   params: Promise<{ id: string }>;
+  searchParams?: Promise<{ error?: string }>;
 };
 
-export default async function EditClassPage({ params }: EditClassPageProps) {
+export default async function EditClassPage({
+  params,
+  searchParams,
+}: EditClassPageProps) {
   const session = await requirePermission("class.update");
   const { id } = await params;
+  const query = await searchParams;
 
   if (!(await canAccessClass(session, id, "class.update"))) {
     redirect("/forbidden");
@@ -26,8 +33,20 @@ export default async function EditClassPage({ params }: EditClassPageProps) {
 
   const [courseClass, branches, rooms] = await Promise.all([
     prisma.courseClass.findUnique({ where: { id } }),
-    prisma.branch.findMany({ orderBy: { name: "asc" } }),
-    prisma.room.findMany({ include: { branch: true }, orderBy: { name: "asc" } }),
+    prisma.branch.findMany({
+      select: { id: true, name: true },
+      orderBy: { name: "asc" },
+      take: OPTION_LIMIT,
+    }),
+    prisma.room.findMany({
+      select: {
+        id: true,
+        name: true,
+        branch: { select: { id: true, name: true } },
+      },
+      orderBy: { name: "asc" },
+      take: OPTION_LIMIT,
+    }),
   ]);
 
   if (!courseClass) {
@@ -50,10 +69,29 @@ export default async function EditClassPage({ params }: EditClassPageProps) {
           </Link>
         }
       />
+      {query?.error ? (
+        <div className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800">
+          {query.error === "class_code_duplicate"
+            ? "Mã lớp học đã tồn tại. Vui lòng dùng mã khác."
+            : "Mã lớp học chưa hợp lệ."}
+        </div>
+      ) : null}
       <form
         action={action}
         className="grid gap-4 rounded-lg border border-slate-200 bg-white p-4 shadow-sm lg:grid-cols-2"
       >
+        <label className="block">
+          <span className="text-sm font-medium">Mã lớp học *</span>
+          <input
+            name="classCode"
+            required
+            defaultValue={courseClass.classCode}
+            className="mt-1 h-10 w-full rounded-md border border-slate-200 px-3 text-sm uppercase outline-none focus:border-[#08a7dc]"
+          />
+          <span className="mt-1 block text-xs text-zinc-500">
+            Dùng mã này khi import học viên từ Excel.
+          </span>
+        </label>
         <label className="block">
           <span className="text-sm font-medium">Tên lớp *</span>
           <input

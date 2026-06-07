@@ -28,6 +28,9 @@ import {
 } from "@/lib/labels";
 import { prisma } from "@/lib/prisma";
 
+const OPTION_LIMIT = 200;
+const CLASS_STUDENT_LIMIT = 300;
+
 const dayLabels = ["", "Thứ 2", "Thứ 3", "Thứ 4", "Thứ 5", "Thứ 6", "Thứ 7", "Chủ nhật"];
 
 type ClassDetailPageProps = {
@@ -65,7 +68,9 @@ export default async function ClassDetailPage({
       students: {
         include: {
           student: {
-            include: {
+            select: {
+              id: true,
+              fullName: true,
               attendances: {
                 where: {
                   session: { classId: id },
@@ -75,24 +80,26 @@ export default async function ClassDetailPage({
               },
               scores: {
                 where: { exam: { classId: id } },
-                include: { exam: true },
+                select: { id: true, score: true },
                 orderBy: { updatedAt: "desc" },
+                take: 1,
               },
             },
           },
         },
         orderBy: { joinedAt: "desc" },
+        take: CLASS_STUDENT_LIMIT,
       },
       teachers: {
-        include: { teacher: true },
+        include: { teacher: { select: { id: true, name: true } } },
         orderBy: { assignedAt: "desc" },
       },
       schedules: {
-        include: { room: true },
+        include: { room: { select: { id: true, name: true } } },
         orderBy: [{ dayOfWeek: "asc" }, { startTime: "asc" }],
       },
       sessions: {
-        include: { room: true },
+        include: { room: { select: { id: true, name: true } } },
         orderBy: { sessionDate: "desc" },
         take: 8,
       },
@@ -115,7 +122,20 @@ export default async function ClassDetailPage({
   );
 
   const [students, teachers, rooms] = await Promise.all([
-    prisma.student.findMany({ orderBy: { fullName: "asc" } }),
+    prisma.student.findMany({
+      where: {
+        status: "STUDYING",
+        enrollments: {
+          none: {
+            classId: id,
+            status: "ACTIVE",
+          },
+        },
+      },
+      select: { id: true, fullName: true },
+      orderBy: { fullName: "asc" },
+      take: OPTION_LIMIT,
+    }),
     prisma.user.findMany({
       where: {
         staffProfile: {
@@ -124,9 +144,19 @@ export default async function ClassDetailPage({
           },
         },
       },
+      select: { id: true, name: true },
       orderBy: { name: "asc" },
+      take: OPTION_LIMIT,
     }),
-    prisma.room.findMany({ include: { branch: true }, orderBy: { name: "asc" } }),
+    prisma.room.findMany({
+      select: {
+        id: true,
+        name: true,
+        branch: { select: { id: true, name: true } },
+      },
+      orderBy: { name: "asc" },
+      take: OPTION_LIMIT,
+    }),
   ]);
 
   const enrollAction = enrollStudentAction.bind(null, id);
@@ -149,7 +179,7 @@ export default async function ClassDetailPage({
     <AppShell session={session}>
       <PageHeader
         title={courseClass.name}
-        description={`${courseClass.subject ?? "Môn học"} · ${courseClass.level ?? "Cấp độ"} · ${courseClass.branch?.name ?? "Chưa chọn cơ sở"}`}
+        description={`${courseClass.classCode} · ${courseClass.subject ?? "Môn học"} · ${courseClass.level ?? "Cấp độ"} · ${courseClass.branch?.name ?? "Chưa chọn cơ sở"}`}
         action={
           <div className="flex gap-2">
             {can(session, "class.update") ? (
@@ -172,12 +202,10 @@ export default async function ClassDetailPage({
 
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <div className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
-          <p className="text-sm text-zinc-500">Trạng thái</p>
-          <div className="mt-2">
-            <Badge tone={courseClass.status === "ACTIVE" ? "success" : "warning"}>
-              {classStatusLabels[courseClass.status]}
-            </Badge>
-          </div>
+          <p className="text-sm text-zinc-500">Mã lớp học</p>
+          <p className="mt-1 text-2xl font-semibold text-[#17215c]">
+            {courseClass.classCode}
+          </p>
         </div>
         <div className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
           <p className="text-sm text-zinc-500">Sĩ số</p>
@@ -193,11 +221,20 @@ export default async function ClassDetailPage({
           </p>
         </div>
         <div className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
-          <p className="text-sm text-zinc-500">Giáo viên phụ trách</p>
-          <p className="mt-1 text-sm font-medium">
-            {courseClass.teachers.map((item) => item.teacher.name).join(", ") || "-"}
-          </p>
+          <p className="text-sm text-zinc-500">Trạng thái</p>
+          <div className="mt-2">
+            <Badge tone={courseClass.status === "ACTIVE" ? "success" : "warning"}>
+              {classStatusLabels[courseClass.status]}
+            </Badge>
+          </div>
         </div>
+      </section>
+
+      <section className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
+        <p className="text-sm text-zinc-500">Giáo viên phụ trách</p>
+        <p className="mt-1 text-sm font-medium">
+          {courseClass.teachers.map((item) => item.teacher.name).join(", ") || "-"}
+        </p>
       </section>
 
       {query?.emailAdded || query?.emailError ? (

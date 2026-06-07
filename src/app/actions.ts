@@ -23,6 +23,7 @@ import {
   ScheduleStatus,
   SessionStatus,
   SessionTeacherRole,
+  StaffAttendanceStatus,
   StaffStatus,
   StaffType,
   StudentStatus,
@@ -38,6 +39,13 @@ import {
   isClassRestrictedStaff,
 } from "@/lib/data-scope";
 import { prisma } from "@/lib/prisma";
+import {
+  getStudentImportPreview,
+  saveStudentImportPreview,
+  updateStudentImportPreview,
+  type StudentImportError,
+  type StudentImportRow,
+} from "@/lib/student-import-preview";
 
 const optionalString = z.preprocess(
   (value) => (typeof value === "string" ? value : ""),
@@ -134,9 +142,15 @@ function parseVietnameseDate(value: ExcelJS.CellValue | undefined) {
   const parts = normalized.split("/");
 
   if (parts.length === 3) {
-    const [day, month, year] = parts.map((part) => Number(part));
+    const [first, second, third] = parts.map((part) => Number(part));
 
-    if (day && month && year) {
+    if (first > 1900 && second >= 1 && second <= 12 && third >= 1 && third <= 31) {
+      return new Date(Date.UTC(first, second - 1, third));
+    }
+
+    const [day, month, year] = [first, second, third];
+
+    if (day >= 1 && day <= 31 && month >= 1 && month <= 12 && year > 1900) {
       return new Date(Date.UTC(year, month - 1, day));
     }
   }
@@ -179,6 +193,45 @@ function parseStudentStatus(value: string) {
   }
 
   return StudentStatus.STUDYING;
+}
+
+function phoneText(value: ExcelJS.CellValue | undefined) {
+  const text = cellText(value).replace(/\s+/g, "");
+
+  if (/^\d{9}$/.test(text)) {
+    return `0${text}`;
+  }
+
+  return text;
+}
+
+function normalizeClassCode(value?: string | null) {
+  return (value ?? "")
+    .trim()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/đ/g, "d")
+    .replace(/Đ/g, "D")
+    .replace(/[^a-zA-Z0-9_-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .toUpperCase();
+}
+
+function previewDate(value?: Date) {
+  return value ? value.toISOString() : undefined;
+}
+
+function parseImportDate(value?: string) {
+  if (!value) {
+    return undefined;
+  }
+
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? undefined : date;
+}
+
+function isValidEmail(value?: string) {
+  return !value || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 }
 
 async function saveUploadedFile(file: File, folder: string) {
@@ -245,13 +298,21 @@ async function createOrActivateLinkedUser(input: {
   const email = input.email.trim().toLowerCase();
   const roleId = await findRoleIdByCode(input.roleCode);
   const existing = await prisma.user.findUnique({ where: { email } });
+  const phoneOwner = input.phone
+    ? await prisma.user.findUnique({ where: { phone: input.phone } })
+    : null;
 
   if (existing) {
+    const safePhone =
+      phoneOwner && phoneOwner.id !== existing.id
+        ? existing.phone
+        : (input.phone ?? existing.phone);
+
     await prisma.user.update({
       where: { id: existing.id },
       data: {
         name: input.name,
-        phone: input.phone ?? existing.phone,
+        phone: safePhone,
         status: UserStatus.ACTIVE,
         mustChangePassword: true,
       },
@@ -277,7 +338,7 @@ async function createOrActivateLinkedUser(input: {
     data: {
       name: input.name,
       email,
-      phone: input.phone,
+      phone: phoneOwner ? undefined : input.phone,
       passwordHash: await hashPassword(TEMP_LINKED_ACCOUNT_PASSWORD),
       mustChangePassword: true,
       status: UserStatus.ACTIVE,
@@ -616,7 +677,409 @@ export async function createParentLoginAction(studentId: string) {
   redirect(`/students/${studentId}/edit?parentAccount=1`);
 }
 
+function getHeaderMap(sheet: ExcelJS.Worksheet) {
+  const headers = new Map<string, number>();
+
+  sheet.getRow(1).eachCell((cell, colNumber) => {
+    headers.set(cellText(cell.value).toLowerCase(), colNumber);
+  });
+
+  return headers;
+}
+
+function headerIndex(headers: Map<string, number>, ...names: string[]) {
+  for (const name of names) {
+    const index = headers.get(name.toLowerCase());
+
+    if (index) {
+      return index;
+    }
+  }
+
+  return undefined;
+}
+
+function rowHasAnyValue(row: ExcelJS.Row) {
+  let hasAnyValue = false;
+
+  row.eachCell((cell) => {
+    if (cellText(cell.value)) {
+      hasAnyValue = true;
+    }
+  });
+
+  return hasAnyValue;
+}
+
+async function readStudentImportRows(file: File) {
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.load(Buffer.from(await file.arrayBuffer()) as unknown as ExcelJS.Buffer);
+  const sheet = workbook.worksheets[0];
+
+  if (!sheet) {
+    return { error: "sheet" as const };
+  }
+
+  const headers = getHeaderMap(sheet);
+  const nameCol = headerIndex(headers, "Họ tên học viên");
+
+  if (!nameCol) {
+    return { error: "headers" as const };
+  }
+
+  const columns = {
+    nameCol,
+    dateOfBirthCol: headerIndex(headers, "Ngày sinh"),
+    genderCol: headerIndex(headers, "Giới tính"),
+    phoneCol: headerIndex(headers, "Số điện thoại học viên"),
+    emailCol: headerIndex(headers, "Email học viên"),
+    schoolCol: headerIndex(headers, "Trường học"),
+    schoolGradeCol: headerIndex(headers, "Lớp ở trường"),
+    classCodeCol: headerIndex(headers, "Mã lớp học", "Lớp ở CLB"),
+    hncodeAccountCol: headerIndex(headers, "Tài khoản HNCode"),
+    entryLevelCol: headerIndex(headers, "Trình độ đầu vào"),
+    statusCol: headerIndex(headers, "Trạng thái"),
+    parentNameCol: headerIndex(headers, "Họ tên phụ huynh"),
+    parentPhoneCol: headerIndex(headers, "Số điện thoại phụ huynh"),
+    parentEmailCol: headerIndex(headers, "Email phụ huynh"),
+    relationshipCol: headerIndex(headers, "Quan hệ"),
+    noteCol: headerIndex(headers, "Ghi chú"),
+  };
+
+  const rawRows = [];
+  const classCodes = new Set<string>();
+
+  for (let rowNumber = 2; rowNumber <= sheet.rowCount; rowNumber += 1) {
+    const row = sheet.getRow(rowNumber);
+
+    if (!rowHasAnyValue(row)) {
+      continue;
+    }
+
+    const classCode = normalizeClassCode(
+      columns.classCodeCol ? cellText(row.getCell(columns.classCodeCol).value) : "",
+    );
+
+    if (classCode) {
+      classCodes.add(classCode);
+    }
+
+    rawRows.push({
+      rowNumber,
+      fullName: cellText(row.getCell(columns.nameCol).value),
+      dateOfBirth: columns.dateOfBirthCol
+        ? parseVietnameseDate(row.getCell(columns.dateOfBirthCol).value)
+        : undefined,
+      gender: columns.genderCol
+        ? parseGender(cellText(row.getCell(columns.genderCol).value))
+        : undefined,
+      phone: columns.phoneCol
+        ? phoneText(row.getCell(columns.phoneCol).value) || undefined
+        : undefined,
+      email: columns.emailCol
+        ? cellText(row.getCell(columns.emailCol).value).toLowerCase() || undefined
+        : undefined,
+      school: columns.schoolCol
+        ? cellText(row.getCell(columns.schoolCol).value) || undefined
+        : undefined,
+      schoolGrade: columns.schoolGradeCol
+        ? cellText(row.getCell(columns.schoolGradeCol).value) || undefined
+        : undefined,
+      classCode: classCode || undefined,
+      entryLevel: columns.entryLevelCol
+        ? cellText(row.getCell(columns.entryLevelCol).value) || undefined
+        : undefined,
+      hncodeAccount: columns.hncodeAccountCol
+        ? cellText(row.getCell(columns.hncodeAccountCol).value) || undefined
+        : undefined,
+      status: columns.statusCol
+        ? parseStudentStatus(cellText(row.getCell(columns.statusCol).value))
+        : StudentStatus.STUDYING,
+      note: columns.noteCol
+        ? cellText(row.getCell(columns.noteCol).value) || undefined
+        : undefined,
+      parentName: columns.parentNameCol
+        ? cellText(row.getCell(columns.parentNameCol).value) || undefined
+        : undefined,
+      parentPhone: columns.parentPhoneCol
+        ? phoneText(row.getCell(columns.parentPhoneCol).value) || undefined
+        : undefined,
+      parentEmail: columns.parentEmailCol
+        ? cellText(row.getCell(columns.parentEmailCol).value).toLowerCase() || undefined
+        : undefined,
+      relationship: columns.relationshipCol
+        ? cellText(row.getCell(columns.relationshipCol).value) || undefined
+        : undefined,
+    });
+  }
+
+  const classes = classCodes.size
+    ? await prisma.courseClass.findMany({
+        where: { classCode: { in: [...classCodes] } },
+        select: { id: true, name: true, classCode: true },
+      })
+    : [];
+  const classByCode = new Map(classes.map((item) => [item.classCode, item]));
+  const seenEmails = new Set<string>();
+  const seenPhones = new Set<string>();
+  const seenAccounts = new Set<string>();
+  const validRows: StudentImportRow[] = [];
+  const errors: StudentImportError[] = [];
+
+  for (const row of rawRows) {
+    const rowErrors: string[] = [];
+
+    if (!row.fullName) {
+      rowErrors.push("Thiếu họ tên học viên.");
+    }
+
+    if (!isValidEmail(row.email)) {
+      rowErrors.push("Email học viên không đúng định dạng.");
+    }
+
+    if (!isValidEmail(row.parentEmail)) {
+      rowErrors.push("Email phụ huynh không đúng định dạng.");
+    }
+
+    if (row.email && seenEmails.has(row.email)) {
+      rowErrors.push("Email học viên bị trùng trong file.");
+    }
+
+    if (row.phone && seenPhones.has(row.phone)) {
+      rowErrors.push("Số điện thoại học viên bị trùng trong file.");
+    }
+
+    if (row.hncodeAccount && seenAccounts.has(row.hncodeAccount.toLowerCase())) {
+      rowErrors.push("Tài khoản HNCode bị trùng trong file.");
+    }
+
+    const courseClass = row.classCode ? classByCode.get(row.classCode) : undefined;
+
+    if (row.classCode && !courseClass) {
+      rowErrors.push(`Mã lớp học "${row.classCode}" không tồn tại.`);
+    }
+
+    const duplicateConditions = [
+      ...(row.email ? [{ email: row.email }] : []),
+      ...(row.phone ? [{ phone: row.phone }] : []),
+      ...(row.hncodeAccount ? [{ hncodeAccount: row.hncodeAccount }] : []),
+    ];
+    const existing = duplicateConditions.length
+      ? await prisma.student.findFirst({ where: { OR: duplicateConditions } })
+      : null;
+
+    if (existing) {
+      rowErrors.push("Trùng email, số điện thoại hoặc tài khoản HNCode trong hệ thống.");
+    }
+
+    if (rowErrors.length) {
+      errors.push({
+        rowNumber: row.rowNumber,
+        message: rowErrors.join(" "),
+      });
+      continue;
+    }
+
+    if (row.email) {
+      seenEmails.add(row.email);
+    }
+
+    if (row.phone) {
+      seenPhones.add(row.phone);
+    }
+
+    if (row.hncodeAccount) {
+      seenAccounts.add(row.hncodeAccount.toLowerCase());
+    }
+
+    validRows.push({
+      ...row,
+      dateOfBirth: previewDate(row.dateOfBirth),
+      classId: courseClass?.id,
+      className: courseClass?.name,
+    });
+  }
+
+  return { validRows, errors };
+}
+
+export async function previewImportStudentsAction(formData: FormData) {
+  await requirePermission("student.create");
+  const file = formData.get("file");
+
+  if (!(file instanceof File) || file.size === 0) {
+    redirect("/students/import?error=file");
+  }
+
+  const result = await readStudentImportRows(file);
+
+  if ("error" in result) {
+    redirect(`/students/import?error=${result.error}`);
+  }
+
+  const preview = await saveStudentImportPreview({
+    fileName: file.name,
+    validRows: result.validRows,
+    errors: result.errors,
+  });
+
+  redirect(`/students/import?preview=${preview.token}`);
+}
+
+export async function confirmImportStudentsAction(token: string) {
+  const session = await requirePermission("student.create");
+  const preview = await getStudentImportPreview(token);
+
+  if (!preview) {
+    redirect("/students/import?error=preview");
+  }
+
+  const importedRows: StudentImportRow[] = [];
+  const importErrors: StudentImportError[] = [...(preview.importErrors ?? [])];
+
+  for (const row of preview.validRows) {
+    const duplicateConditions = [
+      ...(row.email ? [{ email: row.email }] : []),
+      ...(row.phone ? [{ phone: row.phone }] : []),
+      ...(row.hncodeAccount ? [{ hncodeAccount: row.hncodeAccount }] : []),
+    ];
+    const existing = duplicateConditions.length
+      ? await prisma.student.findFirst({ where: { OR: duplicateConditions } })
+      : null;
+
+    if (existing) {
+      importErrors.push({
+        rowNumber: row.rowNumber,
+        message: "Dữ liệu vừa bị trùng trong hệ thống, chưa import dòng này.",
+      });
+      continue;
+    }
+
+    try {
+      const studentUserId = row.email
+        ? await createOrActivateLinkedUser({
+            name: row.fullName,
+            email: row.email,
+            phone: row.phone,
+            roleCode: "student",
+          })
+        : undefined;
+      const student = await prisma.student.create({
+        data: {
+          userId: studentUserId,
+          fullName: row.fullName,
+          dateOfBirth: parseImportDate(row.dateOfBirth),
+          gender: row.gender,
+          phone: row.phone,
+          email: row.email,
+          school: row.school,
+          schoolGrade: row.schoolGrade,
+          clubClass: row.classCode,
+          entryLevel: row.entryLevel,
+          hncodeAccount: row.hncodeAccount,
+          status: row.status,
+          note: row.note,
+        },
+      });
+
+      if (row.classId) {
+        await prisma.classStudent.upsert({
+          where: {
+            classId_studentId: {
+              classId: row.classId,
+              studentId: student.id,
+            },
+          },
+          update: { status: EnrollmentStatus.ACTIVE },
+          create: {
+            classId: row.classId,
+            studentId: student.id,
+            status: EnrollmentStatus.ACTIVE,
+          },
+        });
+      }
+
+      if (row.parentName || row.parentPhone || row.parentEmail) {
+        const parentUserId = row.parentEmail
+          ? await createOrActivateLinkedUser({
+              name: row.parentName || `Phụ huynh của ${row.fullName}`,
+              email: row.parentEmail,
+              phone: row.parentPhone,
+              roleCode: "parent",
+            })
+          : undefined;
+        const parent =
+          (row.parentPhone
+            ? await prisma.parent.findFirst({ where: { phone: row.parentPhone } })
+            : row.parentEmail
+              ? await prisma.parent.findFirst({ where: { email: row.parentEmail } })
+              : null) ??
+          (await prisma.parent.create({
+            data: {
+              fullName: row.parentName || "Phụ huynh chưa đặt tên",
+              phone: row.parentPhone,
+              email: row.parentEmail,
+              userId: parentUserId,
+            },
+          }));
+
+        if (parentUserId && !parent.userId) {
+          await prisma.parent.update({
+            where: { id: parent.id },
+            data: { userId: parentUserId },
+          });
+        }
+
+        await prisma.studentParent.upsert({
+          where: {
+            studentId_parentId: {
+              studentId: student.id,
+              parentId: parent.id,
+            },
+          },
+          update: { relationship: row.relationship ?? "Phụ huynh" },
+          create: {
+            studentId: student.id,
+            parentId: parent.id,
+            relationship: row.relationship ?? "Phụ huynh",
+          },
+        });
+      }
+
+      importedRows.push(row);
+    } catch (error) {
+      importErrors.push({
+        rowNumber: row.rowNumber,
+        message:
+          (error as { code?: string }).code === "P2002"
+            ? "Dữ liệu bị trùng trong hệ thống, chưa import dòng này."
+            : "Không thể import dòng này. Vui lòng kiểm tra lại dữ liệu.",
+      });
+    }
+  }
+
+  preview.importedRows = importedRows;
+  preview.importErrors = importErrors;
+  preview.confirmedAt = new Date().toISOString();
+  await updateStudentImportPreview(preview);
+  await audit({
+    userId: session.userId,
+    action: "student.import_excel",
+    entityType: "student",
+    afterData: {
+      imported: importedRows.length,
+      skipped: preview.errors.length + importErrors.length,
+    },
+  });
+  revalidatePath("/students");
+  redirect(`/students/import?result=${preview.token}`);
+}
+
 export async function importStudentsAction(formData: FormData) {
+  return previewImportStudentsAction(formData);
+}
+
+export async function importStudentsDirectAction(formData: FormData) {
   const session = await requirePermission("student.create");
   const file = formData.get("file");
 
@@ -902,6 +1365,7 @@ export async function deleteParentAction(parentId: string) {
 export async function createClassAction(formData: FormData) {
   const session = await requirePermission("class.create");
   const schema = z.object({
+    classCode: z.string().trim().min(2),
     name: z.string().trim().min(2),
     subject: optionalString,
     level: optionalString,
@@ -918,6 +1382,7 @@ export async function createClassAction(formData: FormData) {
     note: optionalString,
   });
   const parsed = schema.parse({
+    classCode: formData.get("classCode"),
     name: formData.get("name"),
     subject: formData.get("subject"),
     level: formData.get("level"),
@@ -933,10 +1398,25 @@ export async function createClassAction(formData: FormData) {
     totalSessions: formData.get("totalSessions"),
     note: formData.get("note"),
   });
+  const classCode = normalizeClassCode(parsed.classCode);
+
+  if (!classCode) {
+    redirect("/classes/new?error=class_code");
+  }
+
+  const existing = await prisma.courseClass.findUnique({
+    where: { classCode },
+    select: { id: true },
+  });
+
+  if (existing) {
+    redirect("/classes/new?error=class_code_duplicate");
+  }
 
   const courseClass = await prisma.courseClass.create({
     data: {
       ...parsed,
+      classCode,
       tuitionFee: parsed.tuitionFee ? String(parsed.tuitionFee) : undefined,
       tuitionPerSession: parsed.tuitionPerSession
         ? String(parsed.tuitionPerSession)
@@ -961,6 +1441,7 @@ export async function createClassAction(formData: FormData) {
 export async function updateClassAction(classId: string, formData: FormData) {
   const session = await requirePermission("class.update");
   const schema = z.object({
+    classCode: z.string().trim().min(2),
     name: z.string().trim().min(2),
     subject: optionalString,
     level: optionalString,
@@ -977,6 +1458,7 @@ export async function updateClassAction(classId: string, formData: FormData) {
     note: optionalString,
   });
   const parsed = schema.parse({
+    classCode: formData.get("classCode"),
     name: formData.get("name"),
     subject: formData.get("subject"),
     level: formData.get("level"),
@@ -994,11 +1476,29 @@ export async function updateClassAction(classId: string, formData: FormData) {
   });
 
   await ensureClassPermission(session, classId, "class.update");
+  const classCode = normalizeClassCode(parsed.classCode);
+
+  if (!classCode) {
+    redirect(`/classes/${classId}/edit?error=class_code`);
+  }
+
+  const duplicate = await prisma.courseClass.findFirst({
+    where: {
+      classCode,
+      id: { not: classId },
+    },
+    select: { id: true },
+  });
+
+  if (duplicate) {
+    redirect(`/classes/${classId}/edit?error=class_code_duplicate`);
+  }
 
   await prisma.courseClass.update({
     where: { id: classId },
     data: {
       ...parsed,
+      classCode,
       tuitionFee: parsed.tuitionFee ? String(parsed.tuitionFee) : null,
       tuitionPerSession: parsed.tuitionPerSession
         ? String(parsed.tuitionPerSession)
@@ -1750,6 +2250,189 @@ export async function updateStaffAction(staffId: string, formData: FormData) {
   revalidatePath(`/staff/${staffId}/edit`);
   revalidatePath("/admin/users");
   redirect(`/staff/${staffId}/edit?updated=1`);
+}
+
+function calculateHours(checkIn?: string, checkOut?: string) {
+  if (!checkIn || !checkOut) {
+    return 0;
+  }
+
+  const [inHour, inMinute] = checkIn.split(":").map(Number);
+  const [outHour, outMinute] = checkOut.split(":").map(Number);
+
+  if (
+    Number.isNaN(inHour) ||
+    Number.isNaN(inMinute) ||
+    Number.isNaN(outHour) ||
+    Number.isNaN(outMinute)
+  ) {
+    return 0;
+  }
+
+  const start = inHour * 60 + inMinute;
+  const end = outHour * 60 + outMinute;
+
+  if (end <= start) {
+    return 0;
+  }
+
+  return Math.round(((end - start) / 60) * 100) / 100;
+}
+
+export async function createStaffAttendanceAction(formData: FormData) {
+  const session = await requirePermission("staff_attendance.manage");
+  const schema = z.object({
+    staffUserId: z.string().min(1),
+    workDate: dateField,
+    checkIn: optionalString,
+    checkOut: optionalString,
+    hoursCount: numberField,
+    shiftName: optionalString,
+    workName: optionalString,
+    status: z.enum(StaffAttendanceStatus),
+    note: optionalString,
+  });
+  const parsed = schema.parse({
+    staffUserId: formData.get("staffUserId"),
+    workDate: formData.get("workDate"),
+    checkIn: formData.get("checkIn"),
+    checkOut: formData.get("checkOut"),
+    hoursCount: formData.get("hoursCount"),
+    shiftName: formData.get("shiftName"),
+    workName: formData.get("workName"),
+    status: formData.get("status") || StaffAttendanceStatus.PRESENT,
+    note: formData.get("note"),
+  });
+
+  const staff = await prisma.user.findFirst({
+    where: {
+      id: parsed.staffUserId,
+      staffProfile: { isNot: null },
+    },
+    select: { id: true },
+  });
+
+  if (!staff || !parsed.workDate) {
+    redirect("/staff/attendance?error=invalid");
+  }
+
+  const hours = parsed.hoursCount ?? calculateHours(parsed.checkIn, parsed.checkOut);
+  let attendanceId = "";
+
+  try {
+    const attendance = await prisma.staffAttendance.create({
+      data: {
+        staffUserId: parsed.staffUserId,
+        workDate: parsed.workDate,
+        checkIn: parsed.checkIn,
+        checkOut: parsed.checkOut,
+        hoursCount: String(hours),
+        shiftName: parsed.shiftName,
+        workName: parsed.workName,
+        status: parsed.status,
+        note: parsed.note,
+        confirmedByUserId: session.userId,
+      },
+    });
+    attendanceId = attendance.id;
+  } catch (error) {
+    if ((error as { code?: string }).code === "P2002") {
+      redirect("/staff/attendance?error=duplicate");
+    }
+
+    throw error;
+  }
+
+  await audit({
+    userId: session.userId,
+    action: "staff_attendance.create",
+    entityType: "staff_attendance",
+    entityId: attendanceId,
+    afterData: parsed,
+  });
+  revalidatePath("/staff/attendance");
+  redirect("/staff/attendance?created=1");
+}
+
+export async function updateStaffAttendanceAction(
+  attendanceId: string,
+  formData: FormData,
+) {
+  const session = await requirePermission("staff_attendance.manage");
+  const schema = z.object({
+    staffUserId: z.string().min(1),
+    workDate: dateField,
+    checkIn: optionalString,
+    checkOut: optionalString,
+    hoursCount: numberField,
+    shiftName: optionalString,
+    workName: optionalString,
+    status: z.enum(StaffAttendanceStatus),
+    note: optionalString,
+  });
+  const parsed = schema.parse({
+    staffUserId: formData.get("staffUserId"),
+    workDate: formData.get("workDate"),
+    checkIn: formData.get("checkIn"),
+    checkOut: formData.get("checkOut"),
+    hoursCount: formData.get("hoursCount"),
+    shiftName: formData.get("shiftName"),
+    workName: formData.get("workName"),
+    status: formData.get("status") || StaffAttendanceStatus.PRESENT,
+    note: formData.get("note"),
+  });
+
+  if (!parsed.workDate) {
+    redirect("/staff/attendance?error=invalid");
+  }
+
+  const hours = parsed.hoursCount ?? calculateHours(parsed.checkIn, parsed.checkOut);
+
+  try {
+    await prisma.staffAttendance.update({
+      where: { id: attendanceId },
+      data: {
+        staffUserId: parsed.staffUserId,
+        workDate: parsed.workDate,
+        checkIn: parsed.checkIn,
+        checkOut: parsed.checkOut,
+        hoursCount: String(hours),
+        shiftName: parsed.shiftName,
+        workName: parsed.workName,
+        status: parsed.status,
+        note: parsed.note,
+        confirmedByUserId: session.userId,
+      },
+    });
+  } catch (error) {
+    if ((error as { code?: string }).code === "P2002") {
+      redirect("/staff/attendance?error=duplicate");
+    }
+
+    throw error;
+  }
+  await audit({
+    userId: session.userId,
+    action: "staff_attendance.update",
+    entityType: "staff_attendance",
+    entityId: attendanceId,
+    afterData: parsed,
+  });
+  revalidatePath("/staff/attendance");
+  redirect("/staff/attendance?updated=1");
+}
+
+export async function deleteStaffAttendanceAction(attendanceId: string) {
+  const session = await requirePermission("staff_attendance.manage");
+  await prisma.staffAttendance.delete({ where: { id: attendanceId } });
+  await audit({
+    userId: session.userId,
+    action: "staff_attendance.delete",
+    entityType: "staff_attendance",
+    entityId: attendanceId,
+  });
+  revalidatePath("/staff/attendance");
+  redirect("/staff/attendance?deleted=1");
 }
 
 export async function setUserStatusAction(userId: string, formData: FormData) {
@@ -2597,11 +3280,40 @@ export async function createPayrollAction(formData: FormData) {
             },
           })
         : 0;
-    const baseAmount =
-      Number(rule.amount?.toString() ?? 0) *
-      (rule.salaryType === SalaryType.PER_SESSION
+    const staffAttendances =
+      !rule.classId &&
+      (rule.salaryType === SalaryType.PER_HOUR ||
+        rule.salaryType === SalaryType.PER_SHIFT ||
+        rule.salaryType === SalaryType.PER_TASK)
+        ? await prisma.staffAttendance.findMany({
+            where: {
+              staffUserId: rule.staffUserId,
+              workDate: { gte: periodFrom, lte: periodTo },
+              status: { in: ["PRESENT", "LATE", "LEFT_EARLY"] },
+            },
+            select: { hoursCount: true },
+          })
+        : [];
+    const hoursCount = staffAttendances.reduce(
+      (sum, item) => sum + Number(item.hoursCount.toString()),
+      0,
+    );
+    const taskCount =
+      rule.salaryType === SalaryType.PER_SHIFT ||
+      rule.salaryType === SalaryType.PER_TASK
+        ? staffAttendances.length
+        : 0;
+    const multiplier =
+      rule.salaryType === SalaryType.PER_SESSION
         ? Math.max(sessionsCount, 0)
-        : 1);
+        : rule.salaryType === SalaryType.PER_HOUR
+          ? Math.max(hoursCount, 0)
+          : rule.salaryType === SalaryType.PER_SHIFT ||
+              rule.salaryType === SalaryType.PER_TASK
+            ? Math.max(taskCount, 0)
+            : 1;
+    const baseAmount =
+      Number(rule.amount?.toString() ?? 0) * multiplier;
     const existing = await prisma.payrollItem.findFirst({
       where: {
         payrollId: payroll.id,
@@ -2612,6 +3324,8 @@ export async function createPayrollAction(formData: FormData) {
     });
     const data = {
       sessionsCount,
+      hoursCount: String(hoursCount),
+      taskCount,
       baseAmount: String(baseAmount),
       totalAmount: String(baseAmount),
     };

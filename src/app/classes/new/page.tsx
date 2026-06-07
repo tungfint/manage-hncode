@@ -6,11 +6,30 @@ import { requirePermission } from "@/lib/auth";
 import { classStatusLabels } from "@/lib/labels";
 import { prisma } from "@/lib/prisma";
 
-export default async function NewClassPage() {
+const OPTION_LIMIT = 200;
+
+type NewClassPageProps = {
+  searchParams?: Promise<{ error?: string }>;
+};
+
+export default async function NewClassPage({ searchParams }: NewClassPageProps) {
   const session = await requirePermission("class.create");
+  const params = await searchParams;
   const [branches, rooms] = await Promise.all([
-    prisma.branch.findMany({ orderBy: { name: "asc" } }),
-    prisma.room.findMany({ include: { branch: true }, orderBy: { name: "asc" } }),
+    prisma.branch.findMany({
+      select: { id: true, name: true },
+      orderBy: { name: "asc" },
+      take: OPTION_LIMIT,
+    }),
+    prisma.room.findMany({
+      select: {
+        id: true,
+        name: true,
+        branch: { select: { id: true, name: true } },
+      },
+      orderBy: { name: "asc" },
+      take: OPTION_LIMIT,
+    }),
   ]);
 
   return (
@@ -27,10 +46,29 @@ export default async function NewClassPage() {
           </Link>
         }
       />
+      {params?.error ? (
+        <div className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800">
+          {params.error === "class_code_duplicate"
+            ? "Mã lớp học đã tồn tại. Vui lòng dùng mã khác."
+            : "Mã lớp học chưa hợp lệ."}
+        </div>
+      ) : null}
       <form
         action={createClassAction}
         className="grid gap-4 rounded-lg border border-zinc-200 bg-white p-4 shadow-sm lg:grid-cols-2"
       >
+        <label className="block">
+          <span className="text-sm font-medium">Mã lớp học *</span>
+          <input
+            name="classCode"
+            required
+            placeholder="VD: PYTHON-KIDS-K01"
+            className="mt-1 h-10 w-full rounded-md border border-zinc-200 px-3 text-sm uppercase outline-none focus:border-teal-500"
+          />
+          <span className="mt-1 block text-xs text-zinc-500">
+            Dùng mã này khi import học viên từ Excel.
+          </span>
+        </label>
         <label className="block">
           <span className="text-sm font-medium">Tên lớp *</span>
           <input

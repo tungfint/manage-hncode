@@ -14,7 +14,7 @@ export async function GET() {
     { header: "Email học viên", key: "studentEmail", width: 28 },
     { header: "Trường học", key: "school", width: 24 },
     { header: "Lớp ở trường", key: "schoolGrade", width: 16 },
-    { header: "Lớp ở CLB", key: "clubClass", width: 20 },
+    { header: "Mã lớp học", key: "classCode", width: 18 },
     { header: "Tài khoản HNCode", key: "hncodeAccount", width: 24 },
     { header: "Trình độ đầu vào", key: "entryLevel", width: 24 },
     { header: "Trạng thái", key: "status", width: 18 },
@@ -26,20 +26,20 @@ export async function GET() {
   ];
 
   sheet.addRow({
-    studentName: "Nguyễn Minh Anh",
-    dateOfBirth: "12/08/2013",
+    studentName: "Nguyễn Khánh Vy",
+    dateOfBirth: "12/08/2014",
     gender: "Nữ",
-    studentPhone: "0988000001",
-    studentEmail: "minhanh@student.hncode.vn",
+    studentPhone: "0988123456",
+    studentEmail: "khanhvy.import@hncode.test",
     school: "THCS Nguyễn Du",
     schoolGrade: "Lớp 6",
-    clubClass: "Python Kids K01",
-    hncodeAccount: "minhanh",
+    classCode: "PYTHON-KIDS-K01",
+    hncodeAccount: "khanhvy.import",
     entryLevel: "Cần củng cố đại số cơ bản",
     status: "Đang học",
-    parentName: "Nguyễn Thị Lan",
-    parentPhone: "0911000001",
-    parentEmail: "lan.parent@example.com",
+    parentName: "Nguyễn Thị Thu",
+    parentPhone: "0912123456",
+    parentEmail: "thu.import@hncode.test",
     relationship: "Mẹ",
     note: "Ưu tiên nhắn Zalo cho phụ huynh",
   });
@@ -56,6 +56,8 @@ export async function GET() {
   for (const column of sheet.columns) {
     column.alignment = { vertical: "middle", wrapText: true };
   }
+  sheet.getColumn(4).numFmt = "@";
+  sheet.getColumn(13).numFmt = "@";
 
   const buffer = await workbook.xlsx.writeBuffer();
 

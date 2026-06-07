@@ -2,6 +2,7 @@ import { AppShell } from "@/components/app-shell";
 import { PageHeader } from "@/components/ui/page-header";
 import { requirePermission } from "@/lib/auth";
 import { formatDateTime } from "@/lib/format";
+import { auditActionLabel, auditEntityLabel } from "@/lib/labels";
 import { prisma } from "@/lib/prisma";
 
 export default async function AuditLogsPage() {
@@ -19,7 +20,7 @@ export default async function AuditLogsPage() {
         description="Theo dõi các thao tác quan trọng trong hệ thống."
       />
       <div className="overflow-x-auto rounded-lg border border-zinc-200 bg-white shadow-sm">
-        <table className="w-full min-w-[820px] text-left text-sm">
+        <table className="w-full min-w-[900px] text-left text-sm">
           <thead className="bg-zinc-50 text-zinc-500">
             <tr>
               <th className="px-4 py-3 font-medium">Thời gian</th>
@@ -36,8 +37,20 @@ export default async function AuditLogsPage() {
                   {formatDateTime(log.createdAt)}
                 </td>
                 <td className="px-4 py-4">{log.user?.name ?? "Hệ thống"}</td>
-                <td className="px-4 py-4 font-medium">{log.action}</td>
-                <td className="px-4 py-4 text-zinc-600">{log.entityType}</td>
+                <td className="px-4 py-4">
+                  <p className="font-medium text-slate-950">
+                    {auditActionLabel(log.action)}
+                  </p>
+                  <p className="mt-1 text-xs text-slate-500">Mã: {log.action}</p>
+                </td>
+                <td className="px-4 py-4">
+                  <p className="text-slate-700">
+                    {auditEntityLabel(log.entityType)}
+                  </p>
+                  <p className="mt-1 text-xs text-slate-500">
+                    Mã: {log.entityType}
+                  </p>
+                </td>
                 <td className="px-4 py-4 text-xs text-zinc-500">
                   {log.entityId ?? "-"}
                 </td>

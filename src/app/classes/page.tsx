@@ -37,6 +37,7 @@ export default async function ClassesPage({ searchParams }: ClassesPageProps) {
     ...(q
       ? {
           OR: [
+            { classCode: { contains: q, mode: "insensitive" as const } },
             { name: { contains: q, mode: "insensitive" as const } },
             { subject: { contains: q, mode: "insensitive" as const } },
             { level: { contains: q, mode: "insensitive" as const } },
@@ -76,7 +77,7 @@ export default async function ClassesPage({ searchParams }: ClassesPageProps) {
     <AppShell session={session}>
       <PageHeader
         title="Lớp học"
-        description="Theo dõi sĩ số, giáo viên, lịch học và trạng thái từng lớp."
+        description="Theo dõi sĩ số, mã lớp, giáo viên, lịch học và trạng thái từng lớp."
         action={
           can(session, "class.create") ? (
             <Link
@@ -104,7 +105,7 @@ export default async function ClassesPage({ searchParams }: ClassesPageProps) {
       <SearchFilter
         q={q}
         status={status}
-        placeholder="Tìm theo tên lớp, môn học, cấp độ"
+        placeholder="Tìm theo mã lớp, tên lớp, môn học, cấp độ"
         statusOptions={Object.entries(classStatusLabels).map(([value, label]) => ({
           value,
           label,
@@ -130,6 +131,9 @@ export default async function ClassesPage({ searchParams }: ClassesPageProps) {
                 <tr key={item.id}>
                   <td className="px-4 py-4">
                     <p className="font-medium">{item.name}</p>
+                    <p className="mt-1 inline-flex rounded bg-cyan-50 px-2 py-0.5 text-xs font-semibold text-[#17215c]">
+                      {item.classCode}
+                    </p>
                     <p className="text-xs text-zinc-500">
                       {item.subject ?? "-"} · {item.level ?? "-"} ·{" "}
                       {formatDate(item.startDate)}

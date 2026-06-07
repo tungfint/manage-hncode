@@ -40,6 +40,46 @@ npm run start -- -p 3000
 
 Trong workspace hiện tại, migration đã được apply vào database local `quan_ly_trung_tam_v2`.
 
+## Kiểm Tra Trước Khi Đẩy Git
+
+Trước khi commit/push, nên chạy đủ:
+
+```powershell
+npm run typecheck
+npm run lint
+npm run build
+git status
+```
+
+Không commit file `.env`, database dump, log tạm hoặc thư mục `.next`.
+
+## Đẩy Lên GitHub
+
+Repo hiện dùng remote `origin` trỏ tới `https://github.com/tungfint/manage-hncode.git`.
+
+```powershell
+git status
+git add .
+git commit -m "Hoan thien MVP quan ly HNCode"
+git push origin main
+```
+
+Nếu GitHub yêu cầu đăng nhập, dùng GitHub account hoặc Personal Access Token theo hướng dẫn của Git.
+
+## Chạy Production Trên VPS
+
+Không chạy `npm run dev` trên VPS vì chế độ dev sẽ compile theo request và chậm hơn production.
+
+```powershell
+npm ci
+npm run db:generate
+npx prisma migrate deploy
+npm run build
+npm run start -- -p 3000
+```
+
+Khuyến nghị đặt `NODE_ENV=production`, cấu hình reverse proxy Nginx/Caddy, bật HTTPS và restart app bằng PM2 hoặc systemd.
+
 ## Tài Khoản Seed
 
 Mật khẩu mặc định: `Password123!`
@@ -56,7 +96,7 @@ Mật khẩu mặc định: `Password123!`
 - Session JWT, RBAC theo vai trò/quyền, mỗi request đọc lại trạng thái và quyền từ database.
 - Sidebar và dashboard ẩn/hiện chức năng theo quyền tài khoản.
 - Quản lý tài khoản, vai trò, quyền riêng từng tài khoản và audit log.
-- Quản lý học viên, phụ huynh, nhân sự; học viên có email, lớp ở CLB, tài khoản HNCode và tài khoản đăng nhập liên kết.
+- Quản lý học viên kèm thông tin phụ huynh/người liên hệ, nhân sự; học viên có email, lớp ở CLB, tài khoản HNCode và tài khoản đăng nhập liên kết.
 - Import học viên từ Excel theo mẫu tiếng Việt, bỏ qua dòng trùng.
 - Quản lý lớp học, phân công giáo viên, thêm học viên bằng chọn trực tiếp hoặc danh sách email.
 - Sửa/xóa khỏi lớp, ngừng phân công giáo viên, sửa/xóa lịch cố định, hủy buổi học có xác nhận.
@@ -72,7 +112,6 @@ Mật khẩu mặc định: `Password123!`
 
 - `/login`, `/login/google`, `/dashboard`
 - `/students`, `/students/new`, `/students/import`, `/students/import/template`, `/students/[id]/edit`
-- `/parents`, `/parents/new`, `/parents/[id]/edit`
 - `/staff`
 - `/classes`, `/classes/new`, `/classes/[id]`, `/classes/[id]/edit`
 - `/schedule`, `/sessions`, `/sessions/[id]/attendance`

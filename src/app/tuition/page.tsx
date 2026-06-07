@@ -13,6 +13,9 @@ import { formatCurrency, formatDate, toSearch } from "@/lib/format";
 import { paymentMethodLabels, tuitionStatusLabels } from "@/lib/labels";
 import { prisma } from "@/lib/prisma";
 
+const OPTION_LIMIT = 200;
+const CLASS_STUDENT_LIMIT = 200;
+
 type TuitionPageProps = {
   searchParams?: Promise<{
     q?: string;
@@ -60,6 +63,7 @@ export default async function TuitionPage({ searchParams }: TuitionPageProps) {
                 OR: [
                   { student: { fullName: { contains: q, mode: "insensitive" } } },
                   { courseClass: { name: { contains: q, mode: "insensitive" } } },
+                  { courseClass: { classCode: { contains: q, mode: "insensitive" } } },
                 ],
               }
             : {}),
@@ -79,9 +83,16 @@ export default async function TuitionPage({ searchParams }: TuitionPageProps) {
             ? { enrollments: { some: { classId, status: "ACTIVE" } } }
             : {}),
         },
+        select: { id: true, fullName: true },
         orderBy: { fullName: "asc" },
+        take: OPTION_LIMIT,
       }),
-      prisma.courseClass.findMany({ where: classScope, orderBy: { name: "asc" } }),
+      prisma.courseClass.findMany({
+        where: classScope,
+        select: { id: true, classCode: true, name: true },
+        orderBy: { name: "asc" },
+        take: OPTION_LIMIT,
+      }),
       studentId
         ? prisma.student.findFirst({
             where: {
@@ -114,6 +125,12 @@ export default async function TuitionPage({ searchParams }: TuitionPageProps) {
               sessions: {
                 where: { status: "COMPLETED" },
                 select: { id: true },
+              },
+              students: {
+                where: { status: "ACTIVE" },
+                include: { student: true },
+                orderBy: { joinedAt: "desc" },
+                take: CLASS_STUDENT_LIMIT,
               },
             },
           })
@@ -160,7 +177,7 @@ export default async function TuitionPage({ searchParams }: TuitionPageProps) {
       <SearchFilter
         q={q}
         status={status}
-        placeholder="Tìm theo học viên hoặc lớp"
+        placeholder="Tìm theo học viên, tên lớp hoặc mã lớp"
         statusOptions={Object.entries(tuitionStatusLabels).map(([value, label]) => ({
           value,
           label,
@@ -176,7 +193,7 @@ export default async function TuitionPage({ searchParams }: TuitionPageProps) {
           <option value="">Tất cả lớp</option>
           {classes.map((item) => (
             <option key={item.id} value={item.id}>
-              {item.name}
+              {item.classCode} · {item.name}
             </option>
           ))}
         </select>
@@ -200,7 +217,7 @@ export default async function TuitionPage({ searchParams }: TuitionPageProps) {
         </button>
       </form>
 
-      <section className="grid gap-5 xl:grid-cols-[1fr_420px]">
+      <section className="grid min-w-0 gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
         <div className="space-y-5">
           {selectedStudent || selectedClass ? (
             <div className="grid gap-3 sm:grid-cols-3">
@@ -225,7 +242,74 @@ export default async function TuitionPage({ searchParams }: TuitionPageProps) {
             </div>
           ) : null}
 
-          <div className="overflow-x-auto rounded-lg border border-zinc-200 bg-white shadow-sm">
+          {selectedClass ? (
+            <div className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <h2 className="font-semibold">
+                    Báo cáo học phí lớp {selectedClass.classCode}
+                  </h2>
+                  <p className="mt-1 text-sm text-zinc-500">
+                    {selectedClass.name} · Đã học {selectedClass.sessions.length} buổi
+                  </p>
+                </div>
+                <a
+                  href={`/reports/learning?classId=${selectedClass.id}`}
+                  className="text-sm font-medium text-[#08a7dc] hover:text-[#17215c]"
+                >
+                  Xem học tập
+                </a>
+              </div>
+              <div className="mt-3 max-w-full overflow-x-auto">
+                <table className="w-full min-w-[680px] text-left text-sm">
+                  <thead className="bg-zinc-50 text-zinc-500">
+                    <tr>
+                      <th className="px-3 py-2 font-medium">Học viên</th>
+                      <th className="px-3 py-2 font-medium">Khoản thu</th>
+                      <th className="px-3 py-2 font-medium">Phải thu</th>
+                      <th className="px-3 py-2 font-medium">Đã thu</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-zinc-100">
+                    {selectedClass.students.map((enrollment) => {
+                      const studentCharges = charges.filter(
+                        (charge) =>
+                          charge.studentId === enrollment.studentId &&
+                          charge.classId === selectedClass.id,
+                      );
+                      const due = studentCharges.reduce(
+                        (sum, charge) => sum + decimalToNumber(charge.amountDue),
+                        0,
+                      );
+                      const paid = studentCharges.reduce(
+                        (sum, charge) => sum + decimalToNumber(charge.amountPaid),
+                        0,
+                      );
+
+                      return (
+                        <tr key={enrollment.id}>
+                          <td className="px-3 py-2 font-medium">
+                            {enrollment.student.fullName}
+                          </td>
+                          <td className="px-3 py-2 text-zinc-600">
+                            {studentCharges.length}
+                          </td>
+                          <td className="px-3 py-2 text-zinc-600">
+                            {formatCurrency(due)}
+                          </td>
+                          <td className="px-3 py-2 text-zinc-600">
+                            {formatCurrency(paid)}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ) : null}
+
+          <div className="max-w-full overflow-x-auto rounded-lg border border-zinc-200 bg-white shadow-sm">
             <table className="w-full min-w-[980px] text-left text-sm">
               <thead className="bg-zinc-50 text-zinc-500">
                 <tr>
@@ -251,7 +335,9 @@ export default async function TuitionPage({ searchParams }: TuitionPageProps) {
                         {charge.student.fullName}
                       </td>
                       <td className="px-4 py-4 text-zinc-600">
-                        {charge.courseClass?.name ?? "-"}
+                        {charge.courseClass
+                          ? `${charge.courseClass.classCode} · ${charge.courseClass.name}`
+                          : "-"}
                       </td>
                       <td className="px-4 py-4 text-zinc-600">
                         {formatCurrency(charge.amountDue)}
@@ -347,7 +433,7 @@ export default async function TuitionPage({ searchParams }: TuitionPageProps) {
           ) : null}
         </div>
 
-        {can(session, "tuition.manage") ? (
+        {can(session, "tuition.manage") && (selectedStudent || selectedClass) ? (
           <form
             action={createTuitionChargeAction}
             className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm"
@@ -373,7 +459,7 @@ export default async function TuitionPage({ searchParams }: TuitionPageProps) {
                 <option value="">Không gắn lớp</option>
                 {classes.map((item) => (
                   <option key={item.id} value={item.id}>
-                    {item.name}
+                    {item.classCode} · {item.name}
                   </option>
                 ))}
               </select>
@@ -414,6 +500,12 @@ export default async function TuitionPage({ searchParams }: TuitionPageProps) {
               </button>
             </div>
           </form>
+        ) : can(session, "tuition.manage") ? (
+          <div className="rounded-lg border border-yellow-200 bg-[#fff8d7] p-4 text-sm text-zinc-700 shadow-sm">
+            Chọn một lớp hoặc một học viên ở bộ lọc phía trên trước khi tạo khoản
+            phải thu. Cách này giúp tránh tạo nhầm học phí cho sai người hoặc sai
+            lớp.
+          </div>
         ) : null}
       </section>
     </AppShell>

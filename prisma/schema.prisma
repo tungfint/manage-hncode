@@ -113,6 +113,14 @@ enum AttendanceStatus {
   RESERVED
 }
 
+enum StaffAttendanceStatus {
+  PRESENT
+  EXCUSED
+  UNEXCUSED
+  LATE
+  LEFT_EARLY
+}
+
 enum CommentType {
   SESSION
   EXAM
@@ -212,6 +220,8 @@ model User {
   payrollAdjustmentsCreated PayrollAdjustment[] @relation("PayrollAdjustmentCreator")
   payrollAdjustmentsStaff   PayrollAdjustment[] @relation("PayrollAdjustmentStaff")
   payrollItems              PayrollItem[]       @relation("PayrollItemStaff")
+  staffAttendances          StaffAttendance[]   @relation("StaffAttendanceStaff")
+  confirmedStaffAttendances StaffAttendance[]   @relation("StaffAttendanceConfirmer")
   notifications             Notification[]      @relation("NotificationUser")
   auditLogs                 AuditLog[]          @relation("AuditLogUser")
 
@@ -397,6 +407,7 @@ model Room {
 
 model CourseClass {
   id                     String                 @id @default(cuid())
+  classCode              String                 @unique
   name                   String
   subject                String?
   level                  String?
@@ -690,6 +701,30 @@ model SalaryRule {
 
   @@index([staffUserId, status])
   @@map("salary_rules")
+}
+
+model StaffAttendance {
+  id                String                @id @default(cuid())
+  staffUserId       String
+  workDate          DateTime
+  checkIn           String?
+  checkOut          String?
+  hoursCount        Decimal               @default(0) @db.Decimal(6, 2)
+  shiftName         String?
+  workName          String?
+  status            StaffAttendanceStatus @default(PRESENT)
+  note              String?
+  confirmedByUserId String?
+  createdAt         DateTime              @default(now())
+  updatedAt         DateTime              @updatedAt
+
+  staffUser   User  @relation("StaffAttendanceStaff", fields: [staffUserId], references: [id], onDelete: Cascade)
+  confirmedBy User? @relation("StaffAttendanceConfirmer", fields: [confirmedByUserId], references: [id], onDelete: SetNull)
+
+  @@unique([staffUserId, workDate, shiftName])
+  @@index([workDate, status])
+  @@index([staffUserId, workDate])
+  @@map("staff_attendances")
 }
 
 model Payroll {
