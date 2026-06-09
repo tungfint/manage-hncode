@@ -18,7 +18,7 @@ type SessionsPageProps = {
 
 export default async function SessionsPage({ searchParams }: SessionsPageProps) {
   const session = await requirePermission("session.view");
-  await ensureUpcomingSessions(7);
+  await ensureUpcomingSessions(14);
   const params = await searchParams;
   const q = toSearch(params?.q);
   const status = toSearch(params?.status);

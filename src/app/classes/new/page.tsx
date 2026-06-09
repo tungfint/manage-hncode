@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { createClassAction } from "@/app/actions";
 import { AppShell } from "@/components/app-shell";
+import { ClassLocationManager } from "@/components/class-location-manager";
 import { PageHeader } from "@/components/ui/page-header";
 import { requirePermission } from "@/lib/auth";
 import { classStatusLabels } from "@/lib/labels";
@@ -9,7 +10,11 @@ import { prisma } from "@/lib/prisma";
 const OPTION_LIMIT = 200;
 
 type NewClassPageProps = {
-  searchParams?: Promise<{ error?: string }>;
+  searchParams?: Promise<{
+    error?: string;
+    locationUpdated?: string;
+    locationError?: string;
+  }>;
 };
 
 export default async function NewClassPage({ searchParams }: NewClassPageProps) {
@@ -17,7 +22,7 @@ export default async function NewClassPage({ searchParams }: NewClassPageProps) 
   const params = await searchParams;
   const [branches, rooms] = await Promise.all([
     prisma.branch.findMany({
-      select: { id: true, name: true },
+      select: { id: true, name: true, address: true, phone: true, status: true },
       orderBy: { name: "asc" },
       take: OPTION_LIMIT,
     }),
@@ -25,12 +30,16 @@ export default async function NewClassPage({ searchParams }: NewClassPageProps) 
       select: {
         id: true,
         name: true,
+        capacity: true,
+        status: true,
         branch: { select: { id: true, name: true } },
       },
       orderBy: { name: "asc" },
       take: OPTION_LIMIT,
     }),
   ]);
+  const activeBranches = branches.filter((branch) => branch.status === "ACTIVE");
+  const activeRooms = rooms.filter((room) => room.status === "ACTIVE");
 
   return (
     <AppShell session={session}>
@@ -112,7 +121,7 @@ export default async function NewClassPage({ searchParams }: NewClassPageProps) 
             className="mt-1 h-10 w-full rounded-md border border-zinc-200 px-3 text-sm outline-none focus:border-teal-500"
           >
             <option value="">Chưa chọn</option>
-            {branches.map((branch) => (
+            {activeBranches.map((branch) => (
               <option key={branch.id} value={branch.id}>
                 {branch.name}
               </option>
@@ -126,7 +135,7 @@ export default async function NewClassPage({ searchParams }: NewClassPageProps) 
             className="mt-1 h-10 w-full rounded-md border border-zinc-200 px-3 text-sm outline-none focus:border-teal-500"
           >
             <option value="">Chưa chọn</option>
-            {rooms.map((room) => (
+            {activeRooms.map((room) => (
               <option key={room.id} value={room.id}>
                 {room.branch.name} · {room.name}
               </option>
@@ -215,6 +224,13 @@ export default async function NewClassPage({ searchParams }: NewClassPageProps) 
           </button>
         </div>
       </form>
+      <ClassLocationManager
+        branches={branches}
+        rooms={rooms}
+        redirectTo="/classes/new"
+        locationUpdated={params?.locationUpdated}
+        locationError={params?.locationError}
+      />
     </AppShell>
   );
 }

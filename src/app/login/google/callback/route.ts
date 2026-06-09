@@ -5,6 +5,7 @@ import {
   getEffectiveAccessForUser,
   SESSION_COOKIE,
 } from "@/lib/auth";
+import { shouldUseSecureCookies } from "@/lib/cookie-options";
 import { prisma } from "@/lib/prisma";
 import { GOOGLE_STATE_COOKIE } from "../route";
 
@@ -118,7 +119,7 @@ export async function GET(request: NextRequest) {
   cookieStore.set(SESSION_COOKIE, token, {
     httpOnly: true,
     sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
+    secure: shouldUseSecureCookies(),
     path: "/",
     maxAge: 60 * 60 * 8,
   });

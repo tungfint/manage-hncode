@@ -22,7 +22,7 @@ function sessionRoleFromTeacherRole(role: TeacherAssignmentRole) {
     : SessionTeacherRole.ASSISTANT;
 }
 
-export async function ensureUpcomingSessions(daysAhead = 7) {
+export async function ensureUpcomingSessions(daysAhead = 14) {
   const today = startOfToday();
   const end = new Date(today);
   end.setDate(today.getDate() + daysAhead);

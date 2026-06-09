@@ -10,7 +10,7 @@ import { AppShell } from "@/components/app-shell";
 import { Badge } from "@/components/ui/badge";
 import { PageHeader } from "@/components/ui/page-header";
 import { can, requirePermission } from "@/lib/auth";
-import { canAccessClass } from "@/lib/data-scope";
+import { canAccessClass, isClassRestrictedStaff } from "@/lib/data-scope";
 import { formatDate, formatDateTime } from "@/lib/format";
 import {
   attendanceStatusLabels,
@@ -24,8 +24,29 @@ type AttendancePageProps = {
     saved?: string;
     commented?: string;
     teachersUpdated?: string;
+    noteError?: string;
   }>;
 };
+
+function sessionDateTime(date: Date, time: string) {
+  const [hour = 0, minute = 0] = time.split(":").map(Number);
+  const result = new Date(date);
+  result.setHours(hour, minute, 0, 0);
+  return result;
+}
+
+function isWithinSessionNoteWindow(input: {
+  sessionDate: Date;
+  startTime: string;
+  endTime: string;
+}) {
+  const start = sessionDateTime(input.sessionDate, input.startTime).getTime();
+  const end = sessionDateTime(input.sessionDate, input.endTime).getTime();
+  const now = Date.now();
+  const hour = 60 * 60 * 1000;
+
+  return now >= start - hour && now <= end + hour;
+}
 
 export default async function AttendancePage({
   params,
@@ -92,6 +113,10 @@ export default async function AttendancePage({
   const markAttendance = markAttendanceAction.bind(null, id);
   const createComment = createSessionCommentAction.bind(null, id);
   const uploadAttachment = uploadSessionAttachmentAction.bind(null, id);
+  const canManageSession = can(session, "session.manage");
+  const canEditSessionNotes =
+    canManageSession &&
+    (!isClassRestrictedStaff(session) || isWithinSessionNoteWindow(classSession));
 
   return (
     <AppShell session={session}>
@@ -122,6 +147,12 @@ export default async function AttendancePage({
       {qs?.teachersUpdated ? (
         <div className="rounded-md border border-teal-200 bg-teal-50 px-3 py-2 text-sm text-teal-800">
           Đã cập nhật giáo viên thực tế tham gia.
+        </div>
+      ) : null}
+
+      {qs?.noteError === "time_window" ? (
+        <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+          Giáo viên chỉ được ghi nội dung từ trước giờ học 1 giờ đến sau giờ học 1 giờ.
         </div>
       ) : null}
 
@@ -220,7 +251,7 @@ export default async function AttendancePage({
               ) : null}
             </div>
           </div>
-          {can(session, "session.manage") ? (
+          {canManageSession ? (
             <form
               action={updateTeachers}
               className="rounded-lg border border-slate-200 bg-slate-50 p-4 shadow-sm xl:col-span-2"
@@ -260,7 +291,7 @@ export default async function AttendancePage({
               </div>
             </form>
           ) : null}
-          {can(session, "session.manage") ? (
+          {canEditSessionNotes ? (
             <form
               action={saveNotes}
               className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm"
@@ -314,6 +345,10 @@ export default async function AttendancePage({
                 Lưu nội dung
               </button>
             </form>
+          ) : canManageSession ? (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 shadow-sm">
+              Giáo viên có thể ghi nội dung buổi học trong khoảng trước giờ học 1 giờ đến sau giờ học 1 giờ.
+            </div>
           ) : null}
 
           <div className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">

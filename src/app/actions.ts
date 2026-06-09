@@ -23,6 +23,7 @@ import {
   ScheduleStatus,
   SessionStatus,
   SessionTeacherRole,
+  RoomStatus,
   StaffAttendanceStatus,
   StaffStatus,
   StaffType,
@@ -39,6 +40,7 @@ import {
   isClassRestrictedStaff,
 } from "@/lib/data-scope";
 import { prisma } from "@/lib/prisma";
+import { ensureUpcomingSessions } from "@/lib/sessions";
 import {
   getStudentImportPreview,
   saveStudentImportPreview,
@@ -75,6 +77,35 @@ const numberField = z.preprocess(
 
 const TEMP_LINKED_ACCOUNT_PASSWORD = "HNCODElaptrinhvuive";
 const UPLOAD_ROOT = path.join(process.cwd(), "public", "uploads");
+
+function safeRedirectPath(value: FormDataEntryValue | null, fallback: string) {
+  if (typeof value !== "string") {
+    return fallback;
+  }
+
+  const path = value.trim();
+  return path.startsWith("/") && !path.startsWith("//") ? path : fallback;
+}
+
+function sessionDateTime(date: Date, time: string) {
+  const [hour = 0, minute = 0] = time.split(":").map(Number);
+  const result = new Date(date);
+  result.setHours(hour, minute, 0, 0);
+  return result;
+}
+
+function isWithinSessionNoteWindow(input: {
+  sessionDate: Date;
+  startTime: string;
+  endTime: string;
+}) {
+  const start = sessionDateTime(input.sessionDate, input.startTime).getTime();
+  const end = sessionDateTime(input.sessionDate, input.endTime).getTime();
+  const now = Date.now();
+  const hour = 60 * 60 * 1000;
+
+  return now >= start - hour && now <= end + hour;
+}
 
 function dayOfWeekFromDate(date: Date) {
   const day = date.getUTCDay();
@@ -1533,6 +1564,209 @@ export async function deleteClassAction(classId: string) {
   redirect("/classes?deleted=1");
 }
 
+export async function createBranchAction(formData: FormData) {
+  const session = await requirePermission("class.update");
+  const redirectTo = safeRedirectPath(formData.get("redirectTo"), "/classes/new");
+  const schema = z.object({
+    name: z.string().trim().min(2),
+    address: optionalString,
+    phone: optionalString,
+  });
+  const parsed = schema.parse({
+    name: formData.get("name"),
+    address: formData.get("address"),
+    phone: formData.get("phone"),
+  });
+
+  const branch = await prisma.branch.create({
+    data: {
+      ...parsed,
+      status: StaffStatus.ACTIVE,
+    },
+  });
+
+  await audit({
+    userId: session.userId,
+    action: "branch.create",
+    entityType: "branch",
+    entityId: branch.id,
+    afterData: parsed,
+  });
+  revalidatePath("/classes");
+  revalidatePath(redirectTo);
+  redirect(`${redirectTo}?locationUpdated=1`);
+}
+
+export async function updateBranchAction(branchId: string, formData: FormData) {
+  const session = await requirePermission("class.update");
+  const redirectTo = safeRedirectPath(formData.get("redirectTo"), "/classes/new");
+  const schema = z.object({
+    name: z.string().trim().min(2),
+    address: optionalString,
+    phone: optionalString,
+    status: z.enum(StaffStatus).default(StaffStatus.ACTIVE),
+  });
+  const parsed = schema.parse({
+    name: formData.get("name"),
+    address: formData.get("address"),
+    phone: formData.get("phone"),
+    status: formData.get("status") || StaffStatus.ACTIVE,
+  });
+
+  await prisma.branch.update({ where: { id: branchId }, data: parsed });
+  await audit({
+    userId: session.userId,
+    action: "branch.update",
+    entityType: "branch",
+    entityId: branchId,
+    afterData: parsed,
+  });
+  revalidatePath("/classes");
+  revalidatePath(redirectTo);
+  redirect(`${redirectTo}?locationUpdated=1`);
+}
+
+export async function deleteBranchAction(branchId: string, formData: FormData) {
+  const session = await requirePermission("class.update");
+  const redirectTo = safeRedirectPath(formData.get("redirectTo"), "/classes/new");
+
+  await prisma.$transaction([
+    prisma.branch.update({
+      where: { id: branchId },
+      data: { status: StaffStatus.INACTIVE },
+    }),
+    prisma.room.updateMany({
+      where: { branchId },
+      data: { status: RoomStatus.INACTIVE },
+    }),
+  ]);
+  await audit({
+    userId: session.userId,
+    action: "branch.delete",
+    entityType: "branch",
+    entityId: branchId,
+  });
+  revalidatePath("/classes");
+  revalidatePath(redirectTo);
+  redirect(`${redirectTo}?locationUpdated=1`);
+}
+
+export async function createRoomAction(formData: FormData) {
+  const session = await requirePermission("class.update");
+  const redirectTo = safeRedirectPath(formData.get("redirectTo"), "/classes/new");
+  const schema = z.object({
+    branchId: z.string().min(1),
+    name: z.string().trim().min(2),
+    capacity: numberField,
+  });
+  const parsed = schema.parse({
+    branchId: formData.get("branchId"),
+    name: formData.get("name"),
+    capacity: formData.get("capacity"),
+  });
+  const duplicate = await prisma.room.findFirst({
+    where: {
+      branchId: parsed.branchId,
+      name: { equals: parsed.name, mode: "insensitive" },
+      status: RoomStatus.ACTIVE,
+    },
+    select: { id: true },
+  });
+
+  if (duplicate) {
+    redirect(`${redirectTo}?locationError=room_duplicate`);
+  }
+
+  const room = await prisma.room.create({
+    data: {
+      branchId: parsed.branchId,
+      name: parsed.name,
+      capacity: parsed.capacity ? Math.trunc(parsed.capacity) : undefined,
+      status: RoomStatus.ACTIVE,
+    },
+  });
+
+  await audit({
+    userId: session.userId,
+    action: "room.create",
+    entityType: "room",
+    entityId: room.id,
+    afterData: parsed,
+  });
+  revalidatePath("/classes");
+  revalidatePath(redirectTo);
+  redirect(`${redirectTo}?locationUpdated=1`);
+}
+
+export async function updateRoomAction(roomId: string, formData: FormData) {
+  const session = await requirePermission("class.update");
+  const redirectTo = safeRedirectPath(formData.get("redirectTo"), "/classes/new");
+  const schema = z.object({
+    branchId: z.string().min(1),
+    name: z.string().trim().min(2),
+    capacity: numberField,
+    status: z.enum(RoomStatus).default(RoomStatus.ACTIVE),
+  });
+  const parsed = schema.parse({
+    branchId: formData.get("branchId"),
+    name: formData.get("name"),
+    capacity: formData.get("capacity"),
+    status: formData.get("status") || RoomStatus.ACTIVE,
+  });
+  const duplicate = await prisma.room.findFirst({
+    where: {
+      id: { not: roomId },
+      branchId: parsed.branchId,
+      name: { equals: parsed.name, mode: "insensitive" },
+      status: RoomStatus.ACTIVE,
+    },
+    select: { id: true },
+  });
+
+  if (duplicate) {
+    redirect(`${redirectTo}?locationError=room_duplicate`);
+  }
+
+  await prisma.room.update({
+    where: { id: roomId },
+    data: {
+      branchId: parsed.branchId,
+      name: parsed.name,
+      capacity: parsed.capacity ? Math.trunc(parsed.capacity) : null,
+      status: parsed.status,
+    },
+  });
+  await audit({
+    userId: session.userId,
+    action: "room.update",
+    entityType: "room",
+    entityId: roomId,
+    afterData: parsed,
+  });
+  revalidatePath("/classes");
+  revalidatePath(redirectTo);
+  redirect(`${redirectTo}?locationUpdated=1`);
+}
+
+export async function deleteRoomAction(roomId: string, formData: FormData) {
+  const session = await requirePermission("class.update");
+  const redirectTo = safeRedirectPath(formData.get("redirectTo"), "/classes/new");
+
+  await prisma.room.update({
+    where: { id: roomId },
+    data: { status: RoomStatus.INACTIVE },
+  });
+  await audit({
+    userId: session.userId,
+    action: "room.delete",
+    entityType: "room",
+    entityId: roomId,
+  });
+  revalidatePath("/classes");
+  revalidatePath(redirectTo);
+  redirect(`${redirectTo}?locationUpdated=1`);
+}
+
 export async function enrollStudentAction(classId: string, formData: FormData) {
   const session = await requirePermission("class.update");
   const studentId = String(formData.get("studentId") ?? "");
@@ -1928,6 +2162,21 @@ export async function deleteScheduleAction(classId: string, scheduleId: string) 
   redirect(`/classes/${classId}?scheduleDeleted=1`);
 }
 
+export async function refreshUpcomingSessionsAction() {
+  const session = await requirePermission("schedule.manage");
+  const created = await ensureUpcomingSessions(14);
+
+  await audit({
+    userId: session.userId,
+    action: "session.refresh_upcoming",
+    entityType: "class_session",
+    afterData: { daysAhead: 14, created },
+  });
+  revalidatePath("/schedule");
+  revalidatePath("/sessions");
+  redirect(`/schedule?sessionsUpdated=${created}`);
+}
+
 export async function createSessionAction(classId: string, formData: FormData) {
   const session = await requirePermission("session.manage");
   await ensureClassPermission(session, classId, "session.manage");
@@ -2252,6 +2501,44 @@ export async function updateStaffAction(staffId: string, formData: FormData) {
   redirect(`/staff/${staffId}/edit?updated=1`);
 }
 
+export async function deleteStaffAction(staffId: string) {
+  const session = await requirePermission("user.manage");
+  const staff = await prisma.staffProfile.findUnique({
+    where: { id: staffId },
+    select: { userId: true, fullName: true },
+  });
+
+  if (!staff) {
+    redirect("/staff");
+  }
+
+  if (staff.userId === session.userId) {
+    redirect("/staff?error=self_delete");
+  }
+
+  await prisma.$transaction([
+    prisma.user.update({
+      where: { id: staff.userId },
+      data: { status: UserStatus.DISABLED },
+    }),
+    prisma.staffProfile.update({
+      where: { id: staffId },
+      data: { status: StaffStatus.INACTIVE },
+    }),
+  ]);
+
+  await audit({
+    userId: session.userId,
+    action: "staff.delete",
+    entityType: "staff_profile",
+    entityId: staffId,
+    afterData: { fullName: staff.fullName },
+  });
+  revalidatePath("/staff");
+  revalidatePath("/admin/users");
+  redirect("/staff?deleted=1");
+}
+
 function calculateHours(checkIn?: string, checkOut?: string) {
   if (!checkIn || !checkOut) {
     return 0;
@@ -2526,7 +2813,12 @@ export async function saveSessionNotesAction(sessionId: string, formData: FormDa
   });
   const classSession = await prisma.classSession.findUnique({
     where: { id: sessionId },
-    select: { classId: true },
+    select: {
+      classId: true,
+      sessionDate: true,
+      startTime: true,
+      endTime: true,
+    },
   });
 
   if (!classSession) {
@@ -2534,6 +2826,13 @@ export async function saveSessionNotesAction(sessionId: string, formData: FormDa
   }
 
   await ensureClassPermission(session, classSession.classId, "session.manage");
+
+  if (
+    isClassRestrictedStaff(session) &&
+    !isWithinSessionNoteWindow(classSession)
+  ) {
+    redirect(`/sessions/${sessionId}/attendance?noteError=time_window`);
+  }
 
   await prisma.classSession.update({
     where: { id: sessionId },

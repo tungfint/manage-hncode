@@ -1,4 +1,4 @@
-import { Plus } from "lucide-react";
+﻿import { Plus } from "lucide-react";
 import Link from "next/link";
 import { deleteClassAction } from "@/app/actions";
 import { AppShell } from "@/components/app-shell";
@@ -76,8 +76,8 @@ export default async function ClassesPage({ searchParams }: ClassesPageProps) {
   return (
     <AppShell session={session}>
       <PageHeader
-        title="Lớp học"
-        description="Theo dõi sĩ số, mã lớp, giáo viên, lịch học và trạng thái từng lớp."
+        title="Lá»›p há»c"
+        description="Theo dÃµi sÄ© sá»‘, mÃ£ lá»›p, giÃ¡o viÃªn, lá»‹ch há»c vÃ  tráº¡ng thÃ¡i tá»«ng lá»›p."
         action={
           can(session, "class.create") ? (
             <Link
@@ -85,7 +85,7 @@ export default async function ClassesPage({ searchParams }: ClassesPageProps) {
               className="inline-flex h-10 items-center gap-2 rounded-md bg-zinc-950 px-4 text-sm font-medium text-white hover:bg-zinc-800"
             >
               <Plus size={17} aria-hidden="true" />
-              Tạo lớp
+              Táº¡o lá»›p
             </Link>
           ) : null
         }
@@ -93,19 +93,19 @@ export default async function ClassesPage({ searchParams }: ClassesPageProps) {
 
       {params?.created ? (
         <div className="rounded-md border border-teal-200 bg-teal-50 px-3 py-2 text-sm text-teal-800">
-          Đã tạo lớp mới.
+          ÄÃ£ táº¡o lá»›p má»›i.
         </div>
       ) : null}
       {params?.deleted ? (
         <div className="rounded-md border border-teal-200 bg-teal-50 px-3 py-2 text-sm text-teal-800">
-          Đã xóa lớp học.
+          ÄÃ£ xÃ³a lá»›p há»c.
         </div>
       ) : null}
 
       <SearchFilter
         q={q}
         status={status}
-        placeholder="Tìm theo mã lớp, tên lớp, môn học, cấp độ"
+        placeholder="TÃ¬m theo mÃ£ lá»›p, tÃªn lá»›p, mÃ´n há»c, cáº¥p Ä‘á»™"
         statusOptions={Object.entries(classStatusLabels).map(([value, label]) => ({
           value,
           label,
@@ -117,7 +117,7 @@ export default async function ClassesPage({ searchParams }: ClassesPageProps) {
           <table className="w-full min-w-[980px] text-left text-sm">
             <thead className="bg-zinc-50 text-zinc-500">
               <tr>
-                <th className="px-4 py-3 font-medium">Lớp</th>
+                <th className="px-4 py-3 font-bold text-[#17215c]">Lớp</th>
                 <th className="px-4 py-3 font-medium">Cơ sở / phòng</th>
                 <th className="px-4 py-3 font-medium">Giáo viên</th>
                 <th className="px-4 py-3 font-medium">Sĩ số</th>
@@ -130,14 +130,21 @@ export default async function ClassesPage({ searchParams }: ClassesPageProps) {
               {classes.map((item) => (
                 <tr key={item.id}>
                   <td className="px-4 py-4">
-                    <p className="font-medium">{item.name}</p>
-                    <p className="mt-1 inline-flex rounded bg-cyan-50 px-2 py-0.5 text-xs font-semibold text-[#17215c]">
-                      {item.classCode}
-                    </p>
-                    <p className="text-xs text-zinc-500">
-                      {item.subject ?? "-"} · {item.level ?? "-"} ·{" "}
-                      {formatDate(item.startDate)}
-                    </p>
+                    <Link
+                      href={`/classes/${item.id}`}
+                      className="group block rounded-md border border-cyan-100 bg-cyan-50/70 px-3 py-2 transition hover:border-cyan-300 hover:bg-cyan-100"
+                    >
+                      <p className="font-bold text-[#17215c] group-hover:text-[#08a7dc]">
+                        {item.name}
+                      </p>
+                      <p className="mt-1 inline-flex rounded bg-white px-2 py-0.5 text-xs font-semibold text-[#17215c]">
+                        {item.classCode}
+                      </p>
+                      <p className="mt-1 text-xs text-zinc-600">
+                        {item.subject ?? "-"} · {item.level ?? "-"} · {" "}
+                        {formatDate(item.startDate)}
+                      </p>
+                    </Link>
                   </td>
                   <td className="px-4 py-4 text-zinc-600">
                     <p>{item.branch?.name ?? "-"}</p>
@@ -168,23 +175,23 @@ export default async function ClassesPage({ searchParams }: ClassesPageProps) {
                         href={`/classes/${item.id}`}
                         className="font-medium text-[#08a7dc] hover:text-[#17215c]"
                       >
-                        Chi tiết
+                        Chi tiáº¿t
                       </Link>
                       {can(session, "class.update") ? (
                         <Link
                           href={`/classes/${item.id}/edit`}
                           className="font-medium text-[#08a7dc] hover:text-[#17215c]"
                         >
-                          Sửa
+                          Sá»­a
                         </Link>
                       ) : null}
                       {can(session, "class.delete") ? (
                         <form action={deleteClassAction.bind(null, item.id)}>
                           <ConfirmSubmitButton
-                            message={`Xóa lớp ${item.name}? Các buổi học/lịch học liên quan cũng sẽ bị xóa.`}
+                            message={`XÃ³a lá»›p ${item.name}? CÃ¡c buá»•i há»c/lá»‹ch há»c liÃªn quan cÅ©ng sáº½ bá»‹ xÃ³a.`}
                             className="font-medium text-rose-700 hover:text-rose-800"
                           >
-                            Xóa
+                            XÃ³a
                           </ConfirmSubmitButton>
                         </form>
                       ) : null}
@@ -196,7 +203,7 @@ export default async function ClassesPage({ searchParams }: ClassesPageProps) {
           </table>
         </div>
       ) : (
-        <EmptyState title="Chưa có lớp phù hợp" />
+        <EmptyState title="ChÆ°a cÃ³ lá»›p phÃ¹ há»£p" />
       )}
 
       <Pagination

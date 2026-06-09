@@ -11,6 +11,7 @@ import {
   SESSION_COOKIE,
   verifyPassword,
 } from "@/lib/auth";
+import { shouldUseSecureCookies } from "@/lib/cookie-options";
 import { prisma } from "@/lib/prisma";
 
 function loginError(message: string): never {
@@ -60,7 +61,7 @@ export async function loginAction(formData: FormData) {
   cookieStore.set(SESSION_COOKIE, token, {
     httpOnly: true,
     sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
+    secure: shouldUseSecureCookies(),
     path: "/",
     maxAge: 60 * 60 * 8,
   });
@@ -128,7 +129,7 @@ export async function changePasswordAction(formData: FormData) {
     cookieStore.set(SESSION_COOKIE, await createSessionToken(access), {
       httpOnly: true,
       sameSite: "lax",
-      secure: process.env.NODE_ENV === "production",
+      secure: shouldUseSecureCookies(),
       path: "/",
       maxAge: 60 * 60 * 8,
     });

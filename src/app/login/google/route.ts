@@ -1,6 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { cookies } from "next/headers";
 import { NextRequest, NextResponse } from "next/server";
+import { shouldUseSecureCookies } from "@/lib/cookie-options";
 
 const GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
 export const GOOGLE_STATE_COOKIE = "qltt_google_state";
@@ -30,7 +31,7 @@ export async function GET(request: NextRequest) {
   cookieStore.set(GOOGLE_STATE_COOKIE, state, {
     httpOnly: true,
     sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
+    secure: shouldUseSecureCookies(),
     path: "/",
     maxAge: 10 * 60,
   });

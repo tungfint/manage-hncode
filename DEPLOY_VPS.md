@@ -59,6 +59,7 @@ Ví dụ production:
 ```env
 DATABASE_URL="postgresql://manage_hncode_user:doi-mat-khau-manh@localhost:5432/manage_hncode?schema=public"
 AUTH_SECRET="tao-chuoi-bi-mat-dai-it-nhat-32-ky-tu"
+COOKIE_SECURE="true"
 GOOGLE_CLIENT_ID=""
 GOOGLE_CLIENT_SECRET=""
 GOOGLE_REDIRECT_URI="https://ten-mien-cua-ban.vn/login/google/callback"
@@ -164,8 +165,11 @@ sudo certbot --nginx -d ten-mien-cua-ban.vn -d www.ten-mien-cua-ban.vn
 Sau khi bật HTTPS, nếu dùng Google Login hãy cập nhật:
 
 ```env
+COOKIE_SECURE="true"
 GOOGLE_REDIRECT_URI="https://ten-mien-cua-ban.vn/login/google/callback"
 ```
+
+Nếu tạm chạy bằng IP qua HTTP để kiểm thử, đặt `COOKIE_SECURE="false"`. Khi đã có HTTPS, đổi lại `COOKIE_SECURE="true"` và restart app.
 
 ## 11. Cập Nhật Phiên Bản Sau Này
 

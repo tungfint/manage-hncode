@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { updateClassAction } from "@/app/actions";
 import { AppShell } from "@/components/app-shell";
+import { ClassLocationManager } from "@/components/class-location-manager";
 import { PageHeader } from "@/components/ui/page-header";
 import { requirePermission } from "@/lib/auth";
 import { canAccessClass } from "@/lib/data-scope";
@@ -16,7 +17,11 @@ function dateValue(value: Date | null) {
 
 type EditClassPageProps = {
   params: Promise<{ id: string }>;
-  searchParams?: Promise<{ error?: string }>;
+  searchParams?: Promise<{
+    error?: string;
+    locationUpdated?: string;
+    locationError?: string;
+  }>;
 };
 
 export default async function EditClassPage({
@@ -34,7 +39,7 @@ export default async function EditClassPage({
   const [courseClass, branches, rooms] = await Promise.all([
     prisma.courseClass.findUnique({ where: { id } }),
     prisma.branch.findMany({
-      select: { id: true, name: true },
+      select: { id: true, name: true, address: true, phone: true, status: true },
       orderBy: { name: "asc" },
       take: OPTION_LIMIT,
     }),
@@ -42,6 +47,8 @@ export default async function EditClassPage({
       select: {
         id: true,
         name: true,
+        capacity: true,
+        status: true,
         branch: { select: { id: true, name: true } },
       },
       orderBy: { name: "asc" },
@@ -54,6 +61,8 @@ export default async function EditClassPage({
   }
 
   const action = updateClassAction.bind(null, id);
+  const activeBranches = branches.filter((branch) => branch.status === "ACTIVE");
+  const activeRooms = rooms.filter((room) => room.status === "ACTIVE");
 
   return (
     <AppShell session={session}>
@@ -139,7 +148,7 @@ export default async function EditClassPage({
             className="mt-1 h-10 w-full rounded-md border border-slate-200 px-3 text-sm outline-none focus:border-[#08a7dc]"
           >
             <option value="">Chưa chọn</option>
-            {branches.map((branch) => (
+            {activeBranches.map((branch) => (
               <option key={branch.id} value={branch.id}>
                 {branch.name}
               </option>
@@ -154,7 +163,7 @@ export default async function EditClassPage({
             className="mt-1 h-10 w-full rounded-md border border-slate-200 px-3 text-sm outline-none focus:border-[#08a7dc]"
           >
             <option value="">Chưa chọn</option>
-            {rooms.map((room) => (
+            {activeRooms.map((room) => (
               <option key={room.id} value={room.id}>
                 {room.branch.name} · {room.name}
               </option>
@@ -254,6 +263,13 @@ export default async function EditClassPage({
           </button>
         </div>
       </form>
+      <ClassLocationManager
+        branches={branches}
+        rooms={rooms}
+        redirectTo={`/classes/${id}/edit`}
+        locationUpdated={query?.locationUpdated}
+        locationError={query?.locationError}
+      />
     </AppShell>
   );
 }
