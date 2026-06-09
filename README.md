@@ -73,12 +73,14 @@ Không chạy `npm run dev` trên VPS vì chế độ dev sẽ compile theo requ
 ```powershell
 npm ci
 npm run db:generate
-npx prisma migrate deploy
+npm run db:deploy
 npm run build
 npm run start -- -p 3000
 ```
 
 Khuyến nghị đặt `NODE_ENV=production`, cấu hình reverse proxy Nginx/Caddy, bật HTTPS và restart app bằng PM2 hoặc systemd.
+
+Xem hướng dẫn chi tiết trong `DEPLOY_VPS.md`.
 
 ## Tài Khoản Seed
 

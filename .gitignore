@@ -20,6 +20,10 @@
 # production
 /build
 
+# uploaded files are runtime data; keep the folder, not the files
+/public/uploads/*
+!/public/uploads/.gitkeep
+
 # misc
 .DS_Store
 *.pem

@@ -1,8 +1,15 @@
 import { ArrowRight, LockKeyhole } from "lucide-react";
+import { Nunito } from "next/font/google";
 import { redirect } from "next/navigation";
 import { loginAction } from "@/app/login/actions";
 import { BrandLogo } from "@/components/brand-logo";
 import { getCurrentSession } from "@/lib/auth";
+
+const loginDisplayFont = Nunito({
+  subsets: ["vietnamese"],
+  weight: ["700", "800"],
+  display: "swap",
+});
 
 type LoginPageProps = {
   searchParams?: Promise<{
@@ -28,13 +35,24 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
           <div className="absolute inset-x-0 bottom-0 h-28 bg-[linear-gradient(180deg,rgba(23,33,92,0)_0%,rgba(23,33,92,.16)_100%)]" />
           <div className="relative w-full max-w-sm rounded-lg border border-white/70 bg-white/80 p-8 text-center shadow-sm backdrop-blur">
             <BrandLogo showText={false} className="justify-center [&_img]:size-36" />
-            <p className="mx-auto mt-6 max-w-72 text-2xl font-bold leading-snug tracking-normal text-[#17215c]">
-              <span className="block">Hệ thống quản lý</span>
-              <span className="block">Câu lạc bộ lập trình</span>
-              <span className="mt-3 inline-flex items-center justify-center rounded-md border border-[#08a7dc]/25 bg-[linear-gradient(135deg,#ffffff_0%,#e8f7fc_55%,#fff4aa_100%)] px-4 py-1.5 text-3xl font-extrabold text-[#17215c] shadow-sm">
-                HNCode
-              </span>
-            </p>
+            <div className="mx-auto mt-7 max-w-72 text-center font-[family:'Segoe_UI_Variable_Display','Segoe_UI',Arial,sans-serif] text-[#17215c]">
+              <p className="text-sm font-semibold uppercase tracking-[0.22em] text-[#087eac]">
+                Hệ thống quản lý
+              </p>
+              <div className="mx-auto mt-3 flex w-32 items-center gap-2">
+                <span className="h-px flex-1 bg-[#f4d35e]" />
+                <span className="size-1.5 rounded-full bg-[#08a7dc]" />
+                <span className="h-px flex-1 bg-[#f4d35e]" />
+              </div>
+              <p
+                className={`${loginDisplayFont.className} mt-4 text-[30px] font-extrabold uppercase leading-[1.05] tracking-[0.08em] text-[#17215c]`}
+              >
+                Câu lạc bộ
+                <span className="mt-2 block text-[34px] font-black tracking-[0.12em] text-[#087eac]">
+                  lập trình
+                </span>
+              </p>
+            </div>
           </div>
         </section>
 
