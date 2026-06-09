@@ -1,8 +1,7 @@
-import { refreshUpcomingSessionsAction } from "@/app/actions";
 import { AppShell } from "@/components/app-shell";
 import { Badge } from "@/components/ui/badge";
 import { PageHeader } from "@/components/ui/page-header";
-import { can, requirePermission } from "@/lib/auth";
+import { requirePermission } from "@/lib/auth";
 import { getAccessibleClassIds } from "@/lib/data-scope";
 import { formatDate, toSearch } from "@/lib/format";
 import { prisma } from "@/lib/prisma";
@@ -147,25 +146,7 @@ export default async function SchedulePage({ searchParams }: SchedulePageProps) 
       <PageHeader
         title="Lịch học"
         description="Lịch cố định theo lớp, giáo viên, phòng học và cơ sở."
-        action={
-          can(session, "schedule.manage") ? (
-            <form action={refreshUpcomingSessionsAction}>
-              <button
-                type="submit"
-                className="h-10 rounded-md bg-[#17215c] px-4 text-sm font-medium text-white hover:bg-[#25308d]"
-              >
-                Cập nhật buổi học
-              </button>
-            </form>
-          ) : null
-        }
       />
-
-      {params?.sessionsUpdated !== undefined ? (
-        <div className="rounded-md border border-teal-200 bg-teal-50 px-3 py-2 text-sm text-teal-800">
-          Đã cập nhật buổi học trong 14 ngày tới. Tạo mới {params.sessionsUpdated} buổi.
-        </div>
-      ) : null}
 
       <form className="grid gap-3 rounded-lg border border-slate-200 bg-white p-3 shadow-sm md:grid-cols-5">
         <input type="hidden" name="view" value={viewMode} />

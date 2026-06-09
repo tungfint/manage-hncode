@@ -2174,7 +2174,7 @@ export async function refreshUpcomingSessionsAction() {
   });
   revalidatePath("/schedule");
   revalidatePath("/sessions");
-  redirect(`/schedule?sessionsUpdated=${created}`);
+  redirect(`/sessions?sessionsUpdated=${created}`);
 }
 
 export async function createSessionAction(classId: string, formData: FormData) {
@@ -3659,6 +3659,29 @@ export async function createPayrollAction(formData: FormData) {
   });
   revalidatePath("/payrolls");
   redirect("/payrolls?created=1");
+}
+
+export async function deletePayrollAction(payrollId: string) {
+  const session = await requirePermission("salary.manage");
+  const payroll = await prisma.payroll.findUnique({
+    where: { id: payrollId },
+    select: { id: true, month: true, year: true },
+  });
+
+  if (!payroll) {
+    redirect("/payrolls");
+  }
+
+  await prisma.payroll.delete({ where: { id: payrollId } });
+  await audit({
+    userId: session.userId,
+    action: "payroll.delete",
+    entityType: "payroll",
+    entityId: payrollId,
+    afterData: { month: payroll.month, year: payroll.year },
+  });
+  revalidatePath("/payrolls");
+  redirect("/payrolls?deleted=1");
 }
 
 export async function adjustPayrollItemAction(

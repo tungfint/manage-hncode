@@ -1,9 +1,10 @@
+import { refreshUpcomingSessionsAction } from "@/app/actions";
 import { AppShell } from "@/components/app-shell";
 import { Badge } from "@/components/ui/badge";
 import { PageHeader } from "@/components/ui/page-header";
 import { Pagination } from "@/components/ui/pagination";
 import { SearchFilter } from "@/components/ui/search-filter";
-import { requirePermission } from "@/lib/auth";
+import { can, requirePermission } from "@/lib/auth";
 import { getAccessibleClassIds } from "@/lib/data-scope";
 import { formatDate, toInt, toSearch } from "@/lib/format";
 import { sessionStatusLabels } from "@/lib/labels";
@@ -13,7 +14,12 @@ import { ensureUpcomingSessions } from "@/lib/sessions";
 const pageSize = 20;
 
 type SessionsPageProps = {
-  searchParams?: Promise<{ q?: string; status?: string; page?: string }>;
+  searchParams?: Promise<{
+    q?: string;
+    status?: string;
+    page?: string;
+    sessionsUpdated?: string;
+  }>;
 };
 
 export default async function SessionsPage({ searchParams }: SessionsPageProps) {
@@ -59,7 +65,24 @@ export default async function SessionsPage({ searchParams }: SessionsPageProps) 
       <PageHeader
         title="Buổi học"
         description="Mở nhanh buổi học để điểm danh, ghi nội dung và nhận xét."
+        action={
+          can(session, "schedule.manage") ? (
+            <form action={refreshUpcomingSessionsAction}>
+              <button
+                type="submit"
+                className="h-10 rounded-md bg-[#17215c] px-4 text-sm font-medium text-white hover:bg-[#25308d]"
+              >
+                Cập nhật buổi học
+              </button>
+            </form>
+          ) : null
+        }
       />
+      {params?.sessionsUpdated !== undefined ? (
+        <div className="rounded-md border border-teal-200 bg-teal-50 px-3 py-2 text-sm text-teal-800">
+          Đã cập nhật buổi học trong 14 ngày tới. Tạo mới {params.sessionsUpdated} buổi.
+        </div>
+      ) : null}
       <SearchFilter
         q={q}
         status={status}

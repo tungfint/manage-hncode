@@ -1,6 +1,7 @@
 import Link from "next/link";
-import { createPayrollAction } from "@/app/actions";
+import { createPayrollAction, deletePayrollAction } from "@/app/actions";
 import { AppShell } from "@/components/app-shell";
+import { ConfirmSubmitButton } from "@/components/confirm-submit-button";
 import { Badge } from "@/components/ui/badge";
 import { PageHeader } from "@/components/ui/page-header";
 import { can, requirePermission } from "@/lib/auth";
@@ -20,6 +21,7 @@ type PayrollsPageProps = {
     created?: string;
     paid?: string;
     adjusted?: string;
+    deleted?: string;
   }>;
 };
 
@@ -84,9 +86,11 @@ export default async function PayrollsPage({ searchParams }: PayrollsPageProps) 
         }
       />
 
-      {params?.created || params?.paid || params?.adjusted ? (
+      {params?.created || params?.paid || params?.adjusted || params?.deleted ? (
         <div className="rounded-md border border-teal-200 bg-teal-50 px-3 py-2 text-sm text-teal-800">
-          {params.paid
+          {params.deleted
+            ? "Đã xoá bảng lương."
+            : params.paid
             ? "Đã xác nhận thanh toán bảng lương."
             : params.adjusted
               ? "Đã cập nhật điều chỉnh lương."
@@ -235,12 +239,24 @@ export default async function PayrollsPage({ searchParams }: PayrollsPageProps) 
                     </Badge>
                   </td>
                   <td className="px-4 py-4">
-                    <Link
-                      href={`/payrolls/${payroll.id}`}
-                      className="font-medium text-[#17215c] underline-offset-4 hover:underline"
-                    >
-                      Chi tiết
-                    </Link>
+                    <div className="flex items-center gap-3">
+                      <Link
+                        href={`/payrolls/${payroll.id}`}
+                        className="font-medium text-[#17215c] underline-offset-4 hover:underline"
+                      >
+                        Chi tiết
+                      </Link>
+                      {canManage ? (
+                        <form action={deletePayrollAction.bind(null, payroll.id)}>
+                          <ConfirmSubmitButton
+                            message={`Xoá bảng lương ${payroll.month.toString().padStart(2, "0")}/${payroll.year}? Các dòng lương liên quan cũng sẽ bị xoá.`}
+                            className="font-medium text-rose-700 hover:text-rose-800"
+                          >
+                            Xoá
+                          </ConfirmSubmitButton>
+                        </form>
+                      ) : null}
+                    </div>
                   </td>
                 </tr>
               );

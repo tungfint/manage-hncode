@@ -12,15 +12,14 @@ function isActivePath(pathname: string, href: string) {
     return pathname === "/" || pathname === "/dashboard";
   }
 
-  return pathname === href || pathname.startsWith(`${href}/`);
-}
-
-function isSidebarActivePath(pathname: string, href: string) {
-  if (href === "/staff" && pathname.startsWith("/staff/attendance")) {
-    return true;
+  if (href === "/staff") {
+    return pathname === "/staff" || (
+      pathname.startsWith("/staff/") &&
+      !pathname.startsWith("/staff/attendance")
+    );
   }
 
-  return isActivePath(pathname, href);
+  return pathname === href || pathname.startsWith(`${href}/`);
 }
 
 function currentNavItem(pathname: string) {
@@ -48,7 +47,7 @@ export function SidebarNav({ permissions }: SidebarNavProps) {
           <div className="space-y-1">
             {group.items.map((item) => {
               const Icon = item.icon;
-              const active = isSidebarActivePath(pathname, item.href);
+              const active = isActivePath(pathname, item.href);
 
               return (
                 <a

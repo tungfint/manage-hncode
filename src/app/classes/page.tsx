@@ -182,7 +182,7 @@ export default async function ClassesPage({ searchParams }: ClassesPageProps) {
                           href={`/classes/${item.id}/edit`}
                           className="font-medium text-[#08a7dc] hover:text-[#17215c]"
                         >
-                          S?a
+                          Sửa
                         </Link>
                       ) : null}
                       {can(session, "class.delete") ? (
