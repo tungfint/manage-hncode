@@ -1,4 +1,4 @@
-﻿import { Plus } from "lucide-react";
+import { Plus } from "lucide-react";
 import Link from "next/link";
 import { deleteStudentAction } from "@/app/actions";
 import { AppShell } from "@/components/app-shell";
@@ -85,8 +85,8 @@ export default async function StudentsPage({ searchParams }: StudentsPageProps) 
   return (
     <AppShell session={session}>
       <PageHeader
-        title="Há»c viÃªn"
-        description="Quáº£n lÃ½ há»“ sÆ¡ há»c viÃªn, phá»¥ huynh liÃªn há»‡ vÃ  lá»›p Ä‘ang há»c."
+        title="Học viên"
+        description="Quản lý hồ sơ học viên, phụ huynh liên hệ và lớp đang học."
         action={
           <div className="flex flex-wrap gap-2">
             <SelectAllCheckboxes
@@ -116,24 +116,24 @@ export default async function StudentsPage({ searchParams }: StudentsPageProps) 
 
       {params?.created ? (
         <div className="rounded-md border border-teal-200 bg-teal-50 px-3 py-2 text-sm text-teal-800">
-          ÄÃ£ thÃªm há»c viÃªn má»›i.
+          Đã thêm học viên mới.
         </div>
       ) : null}
       {params?.updated ? (
         <div className="rounded-md border border-teal-200 bg-teal-50 px-3 py-2 text-sm text-teal-800">
-          ÄÃ£ cáº­p nháº­t há»c viÃªn.
+          Đã cập nhật học viên.
         </div>
       ) : null}
       {params?.deleted ? (
         <div className="rounded-md border border-teal-200 bg-teal-50 px-3 py-2 text-sm text-teal-800">
-          ÄÃ£ xÃ³a há»c viÃªn.
+          Đã xóa học viên.
         </div>
       ) : null}
 
       <SearchFilter
         q={q}
         status={status}
-        placeholder="TÃ¬m theo tÃªn, SÄT, email, tÃ i khoáº£n HNCode"
+        placeholder="Tìm theo tên, SĐT, email, tài khoản HNCode"
         statusOptions={Object.entries(studentStatusLabels).map(([value, label]) => ({
           value,
           label,
@@ -143,11 +143,11 @@ export default async function StudentsPage({ searchParams }: StudentsPageProps) 
         <input type="hidden" name="q" value={q} />
         <input type="hidden" name="status" value={status} />
         <label className="min-w-64 flex-1">
-          <span className="text-xs font-medium text-slate-500">Lá»c theo lá»›p á»Ÿ CLB</span>
+          <span className="text-xs font-medium text-slate-500">Lọc theo lớp ở CLB</span>
           <input
             name="clubClass"
             defaultValue={clubClass}
-            placeholder="VÃ­ dá»¥: Python Kids K01"
+            placeholder="Ví dụ: Python Kids K01"
             className="mt-1 h-10 w-full rounded-md border border-slate-200 px-3 text-sm outline-none focus:border-[#08a7dc]"
           />
         </label>
@@ -155,7 +155,7 @@ export default async function StudentsPage({ searchParams }: StudentsPageProps) 
           type="submit"
           className="mt-5 h-10 rounded-md bg-[#17215c] px-4 text-sm font-medium text-white hover:bg-[#25308d]"
         >
-          Lá»c
+          Lọc
         </button>
       </form>
 
@@ -165,15 +165,15 @@ export default async function StudentsPage({ searchParams }: StudentsPageProps) 
             <thead className="bg-zinc-50 text-zinc-500">
               <tr>
                 <th className="w-12 px-4 py-3 font-medium">Chọn</th>
-                <th className="px-4 py-3 font-medium">Há»c viÃªn</th>
+                <th className="px-4 py-3 font-medium">Học viên</th>
                 <th className="px-4 py-3 font-medium">Email / HNCode</th>
-                <th className="px-4 py-3 font-medium">TrÆ°á»ng / lá»›p</th>
-                <th className="px-4 py-3 font-medium">Lá»›p á»Ÿ CLB</th>
-                <th className="px-4 py-3 font-medium">Phá»¥ huynh</th>
-                <th className="px-4 py-3 font-medium">Lá»›p Ä‘ang há»c</th>
-                <th className="px-4 py-3 font-medium">Tráº¡ng thÃ¡i</th>
-                <th className="px-4 py-3 font-medium">Cáº­p nháº­t</th>
-                <th className="px-4 py-3 font-medium">Thao tÃ¡c</th>
+                <th className="px-4 py-3 font-medium">Trường / lớp</th>
+                <th className="px-4 py-3 font-medium">Lớp ở CLB</th>
+                <th className="px-4 py-3 font-medium">Phụ huynh</th>
+                <th className="px-4 py-3 font-medium">Lớp đang học</th>
+                <th className="px-4 py-3 font-medium">Trạng thái</th>
+                <th className="px-4 py-3 font-medium">Cập nhật</th>
+                <th className="px-4 py-3 font-medium">Thao tác</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-100">
@@ -195,8 +195,8 @@ export default async function StudentsPage({ searchParams }: StudentsPageProps) 
                       {student.fullName}
                     </Link>
                     <p className="text-xs text-zinc-500">
-                      {student.gender ? genderLabels[student.gender] : "-"} Â·{" "}
-                      {student.phone ?? "ChÆ°a cÃ³ SÄT"}
+                      {student.gender ? genderLabels[student.gender] : "-"} ·{" "}
+                      {student.phone ?? "Chưa có SĐT"}
                     </p>
                   </td>
                   <td className="px-4 py-4 text-zinc-600">
@@ -242,16 +242,16 @@ export default async function StudentsPage({ searchParams }: StudentsPageProps) 
                           href={`/students/${student.id}/edit`}
                           className="font-medium text-[#08a7dc] hover:text-[#17215c]"
                         >
-                          Sá»­a
+                          S?a
                         </Link>
                       ) : null}
                       {can(session, "student.delete") ? (
                         <form action={deleteStudentAction.bind(null, student.id)}>
                           <ConfirmSubmitButton
-                            message={`XÃ³a há»c viÃªn ${student.fullName}?`}
+                            message={`Xóa học viên ${student.fullName}?`}
                             className="font-medium text-rose-700 hover:text-rose-800"
                           >
-                            XÃ³a
+                            Xóa
                           </ConfirmSubmitButton>
                         </form>
                       ) : null}
@@ -264,8 +264,8 @@ export default async function StudentsPage({ searchParams }: StudentsPageProps) 
         </div>
       ) : (
         <EmptyState
-          title="ChÆ°a cÃ³ há»c viÃªn phÃ¹ há»£p"
-          description="Thá»­ Ä‘á»•i bá»™ lá»c hoáº·c thÃªm há»c viÃªn má»›i náº¿u báº¡n cÃ³ quyá»n."
+          title="Chưa có học viên phù hợp"
+          description="Thử đổi bộ lọc hoặc thêm học viên mới nếu bạn có quyền."
         />
       )}
 

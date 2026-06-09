@@ -2516,16 +2516,20 @@ export async function deleteStaffAction(staffId: string) {
     redirect("/staff?error=self_delete");
   }
 
-  await prisma.$transaction([
-    prisma.user.update({
-      where: { id: staff.userId },
-      data: { status: UserStatus.DISABLED },
-    }),
-    prisma.staffProfile.update({
-      where: { id: staffId },
-      data: { status: StaffStatus.INACTIVE },
-    }),
-  ]);
+  try {
+    await prisma.user.delete({ where: { id: staff.userId } });
+  } catch (error) {
+    const code =
+      typeof error === "object" && error && "code" in error
+        ? String(error.code)
+        : "";
+
+    if (code === "P2003" || code === "P2014") {
+      redirect("/staff?error=staff_in_use");
+    }
+
+    throw error;
+  }
 
   await audit({
     userId: session.userId,

@@ -21,7 +21,7 @@ const errorMessages: Record<string, string> = {
   file: "Vui lòng chọn file Excel hợp lệ.",
   sheet: "File Excel chưa có sheet dữ liệu.",
   headers:
-    "File Excel thiếu cột bắt buộc. Cần có cột “Họ tên học viên”. Hãy tải file mẫu mới nhất.",
+    'File Excel thiếu cột bắt buộc. Cần có cột "Họ tên học viên". Hãy tải file mẫu mới nhất.',
   preview: "Không tìm thấy dữ liệu xem trước. Vui lòng upload lại file Excel.",
 };
 
@@ -79,7 +79,7 @@ export default async function ImportStudentsPage({
           <h2 className="text-lg font-semibold">Chọn file Excel</h2>
           <p className="mt-1 text-sm text-slate-500">
             Hỗ trợ `.xlsx`. Dòng đầu tiên phải là tiêu đề cột tiếng Việt theo
-            mẫu. Cột “Mã lớp học” dùng để tự động xếp học viên vào lớp.
+            mẫu. Cột &quot;Mã lớp học&quot; dùng để tự động xếp học viên vào lớp.
           </p>
           <input
             name="file"

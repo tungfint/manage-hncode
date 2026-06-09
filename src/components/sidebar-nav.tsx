@@ -15,6 +15,14 @@ function isActivePath(pathname: string, href: string) {
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
+function isSidebarActivePath(pathname: string, href: string) {
+  if (href === "/staff" && pathname.startsWith("/staff/attendance")) {
+    return true;
+  }
+
+  return isActivePath(pathname, href);
+}
+
 function currentNavItem(pathname: string) {
   return [...navItems]
     .sort((a, b) => b.href.length - a.href.length)
@@ -40,7 +48,7 @@ export function SidebarNav({ permissions }: SidebarNavProps) {
           <div className="space-y-1">
             {group.items.map((item) => {
               const Icon = item.icon;
-              const active = isActivePath(pathname, item.href);
+              const active = isSidebarActivePath(pathname, item.href);
 
               return (
                 <a

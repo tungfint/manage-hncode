@@ -1,4 +1,4 @@
-﻿import { Plus } from "lucide-react";
+import { Plus } from "lucide-react";
 import Link from "next/link";
 import { deleteClassAction } from "@/app/actions";
 import { AppShell } from "@/components/app-shell";
@@ -76,8 +76,8 @@ export default async function ClassesPage({ searchParams }: ClassesPageProps) {
   return (
     <AppShell session={session}>
       <PageHeader
-        title="Lá»›p há»c"
-        description="Theo dÃµi sÄ© sá»‘, mÃ£ lá»›p, giÃ¡o viÃªn, lá»‹ch há»c vÃ  tráº¡ng thÃ¡i tá»«ng lá»›p."
+        title="Lớp học"
+        description="Theo dõi sĩ số, mã lớp, giáo viên, lịch học và trạng thái từng lớp."
         action={
           can(session, "class.create") ? (
             <Link
@@ -85,7 +85,7 @@ export default async function ClassesPage({ searchParams }: ClassesPageProps) {
               className="inline-flex h-10 items-center gap-2 rounded-md bg-zinc-950 px-4 text-sm font-medium text-white hover:bg-zinc-800"
             >
               <Plus size={17} aria-hidden="true" />
-              Táº¡o lá»›p
+              Tạo lớp
             </Link>
           ) : null
         }
@@ -93,19 +93,19 @@ export default async function ClassesPage({ searchParams }: ClassesPageProps) {
 
       {params?.created ? (
         <div className="rounded-md border border-teal-200 bg-teal-50 px-3 py-2 text-sm text-teal-800">
-          ÄÃ£ táº¡o lá»›p má»›i.
+          Đã tạo lớp mới.
         </div>
       ) : null}
       {params?.deleted ? (
         <div className="rounded-md border border-teal-200 bg-teal-50 px-3 py-2 text-sm text-teal-800">
-          ÄÃ£ xÃ³a lá»›p há»c.
+          Đã xóa lớp học.
         </div>
       ) : null}
 
       <SearchFilter
         q={q}
         status={status}
-        placeholder="TÃ¬m theo mÃ£ lá»›p, tÃªn lá»›p, mÃ´n há»c, cáº¥p Ä‘á»™"
+        placeholder="Tìm theo mã lớp, tên lớp, môn học, cấp độ"
         statusOptions={Object.entries(classStatusLabels).map(([value, label]) => ({
           value,
           label,
@@ -175,23 +175,23 @@ export default async function ClassesPage({ searchParams }: ClassesPageProps) {
                         href={`/classes/${item.id}`}
                         className="font-medium text-[#08a7dc] hover:text-[#17215c]"
                       >
-                        Chi tiáº¿t
+                        Chi tiết
                       </Link>
                       {can(session, "class.update") ? (
                         <Link
                           href={`/classes/${item.id}/edit`}
                           className="font-medium text-[#08a7dc] hover:text-[#17215c]"
                         >
-                          Sá»­a
+                          S?a
                         </Link>
                       ) : null}
                       {can(session, "class.delete") ? (
                         <form action={deleteClassAction.bind(null, item.id)}>
                           <ConfirmSubmitButton
-                            message={`XÃ³a lá»›p ${item.name}? CÃ¡c buá»•i há»c/lá»‹ch há»c liÃªn quan cÅ©ng sáº½ bá»‹ xÃ³a.`}
+                            message={`Xóa lớp ${item.name}? Các buổi học/lịch học liên quan cũng sẽ bị xóa.`}
                             className="font-medium text-rose-700 hover:text-rose-800"
                           >
-                            XÃ³a
+                            Xóa
                           </ConfirmSubmitButton>
                         </form>
                       ) : null}
@@ -203,7 +203,7 @@ export default async function ClassesPage({ searchParams }: ClassesPageProps) {
           </table>
         </div>
       ) : (
-        <EmptyState title="ChÆ°a cÃ³ lá»›p phÃ¹ há»£p" />
+        <EmptyState title="Chưa có lớp phù hợp" />
       )}
 
       <Pagination
