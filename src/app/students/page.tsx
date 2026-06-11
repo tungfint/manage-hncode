@@ -242,7 +242,7 @@ export default async function StudentsPage({ searchParams }: StudentsPageProps) 
                           href={`/students/${student.id}/edit`}
                           className="font-medium text-[#08a7dc] hover:text-[#17215c]"
                         >
-                          S?a
+                          Sửa
                         </Link>
                       ) : null}
                       {can(session, "student.delete") ? (

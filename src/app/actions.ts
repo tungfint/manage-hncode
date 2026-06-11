@@ -87,6 +87,12 @@ function safeRedirectPath(value: FormDataEntryValue | null, fallback: string) {
   return path.startsWith("/") && !path.startsWith("//") ? path : fallback;
 }
 
+function redirectWithFlag(path: string, flag: string): never {
+  const [base, hash] = path.split("#");
+  const separator = base.includes("?") ? "&" : "?";
+  redirect(`${base}${separator}${flag}${hash ? `#${hash}` : ""}`);
+}
+
 function sessionDateTime(date: Date, time: string) {
   const [hour = 0, minute = 0] = time.split(":").map(Number);
   const result = new Date(date);
@@ -2501,6 +2507,128 @@ export async function updateStaffAction(staffId: string, formData: FormData) {
   redirect(`/staff/${staffId}/edit?updated=1`);
 }
 
+export async function updateUserBasicInfoAction(userId: string, formData: FormData) {
+  const session = await requirePermission("user.manage");
+  const redirectTo = safeRedirectPath(
+    formData.get("redirectTo"),
+    `/admin/users?selected=${userId}#account-settings`,
+  );
+  const schema = z.object({
+    name: z.string().trim().min(2),
+    email: optionalString.pipe(z.string().email().optional()),
+    phone: optionalString,
+  });
+  const parsed = schema.safeParse({
+    name: formData.get("name"),
+    email: formData.get("email"),
+    phone: formData.get("phone"),
+  });
+
+  if (!parsed.success) {
+    redirectWithFlag(redirectTo, "error=account_invalid");
+  }
+
+  const email = parsed.data.email?.toLowerCase();
+  const existingEmail = email
+    ? await prisma.user.findFirst({
+        where: { email, id: { not: userId } },
+        select: { id: true },
+      })
+    : null;
+  const existingPhone = parsed.data.phone
+    ? await prisma.user.findFirst({
+        where: { phone: parsed.data.phone, id: { not: userId } },
+        select: { id: true },
+      })
+    : null;
+
+  if (existingEmail || existingPhone) {
+    redirectWithFlag(
+      redirectTo,
+      existingEmail ? "error=email_exists" : "error=phone_exists",
+    );
+  }
+
+  await prisma.$transaction([
+    prisma.user.update({
+      where: { id: userId },
+      data: {
+        name: parsed.data.name,
+        email,
+        phone: parsed.data.phone,
+      },
+    }),
+    prisma.staffProfile.updateMany({
+      where: { userId },
+      data: {
+        fullName: parsed.data.name,
+        email,
+        phone: parsed.data.phone,
+      },
+    }),
+    prisma.student.updateMany({
+      where: { userId },
+      data: {
+        fullName: parsed.data.name,
+        email,
+        phone: parsed.data.phone,
+      },
+    }),
+    prisma.parent.updateMany({
+      where: { userId },
+      data: {
+        fullName: parsed.data.name,
+        email,
+        phone: parsed.data.phone,
+      },
+    }),
+  ]);
+
+  await audit({
+    userId: session.userId,
+    action: "user.update_profile",
+    entityType: "user",
+    entityId: userId,
+    afterData: { name: parsed.data.name, email, phone: parsed.data.phone },
+  });
+  revalidatePath("/admin/users");
+  revalidatePath("/staff");
+  redirectWithFlag(redirectTo, "accountUpdated=1");
+}
+
+export async function resetUserPasswordAction(userId: string, formData: FormData) {
+  const session = await requirePermission("user.manage");
+  const redirectTo = safeRedirectPath(
+    formData.get("redirectTo"),
+    `/admin/users?selected=${userId}#account-settings`,
+  );
+  const password = String(formData.get("password") ?? "");
+  const mustChangePassword = formData.get("mustChangePassword") === "on";
+
+  if (password.length < 8) {
+    redirectWithFlag(redirectTo, "error=password_short");
+  }
+
+  await prisma.user.update({
+    where: { id: userId },
+    data: {
+      passwordHash: await hashPassword(password),
+      mustChangePassword,
+    },
+  });
+
+  await audit({
+    userId: session.userId,
+    action: "user.reset_password",
+    entityType: "user",
+    entityId: userId,
+    afterData: { mustChangePassword },
+  });
+  revalidatePath("/admin/users");
+  revalidatePath("/staff");
+  redirectWithFlag(redirectTo, "passwordReset=1");
+}
+
 export async function deleteStaffAction(staffId: string) {
   const session = await requirePermission("user.manage");
   const staff = await prisma.staffProfile.findUnique({
@@ -2525,7 +2653,32 @@ export async function deleteStaffAction(staffId: string) {
         : "";
 
     if (code === "P2003" || code === "P2014") {
-      redirect("/staff?error=staff_in_use");
+      await prisma.$transaction([
+        prisma.userRole.deleteMany({ where: { userId: staff.userId } }),
+        prisma.userPermission.deleteMany({ where: { userId: staff.userId } }),
+        prisma.staffProfile.update({
+          where: { id: staffId },
+          data: { status: StaffStatus.INACTIVE },
+        }),
+        prisma.user.update({
+          where: { id: staff.userId },
+          data: {
+            email: null,
+            phone: null,
+            status: UserStatus.DISABLED,
+          },
+        }),
+      ]);
+      await audit({
+        userId: session.userId,
+        action: "staff.archive_delete",
+        entityType: "staff_profile",
+        entityId: staffId,
+        afterData: { fullName: staff.fullName },
+      });
+      revalidatePath("/staff");
+      revalidatePath("/admin/users");
+      redirect("/staff?deleted=1");
     }
 
     throw error;

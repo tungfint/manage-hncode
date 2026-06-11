@@ -34,6 +34,9 @@ export default async function StaffPage({ searchParams }: StaffPageProps) {
   const staffType = toSearch(params?.staffType);
   const status = toSearch(params?.status);
   const page = toInt(params?.page);
+  const statusWhere = status
+    ? { status: status as never }
+    : { status: { not: "DISABLED" as const } };
   const where = {
     ...(q
       ? {
@@ -46,7 +49,7 @@ export default async function StaffPage({ searchParams }: StaffPageProps) {
         }
       : {}),
     ...(staffType ? { staffType: staffType as never } : {}),
-    ...(status ? { user: { status: status as never } } : {}),
+    user: statusWhere,
   };
   const [staff, total] = await Promise.all([
     prisma.staffProfile.findMany({

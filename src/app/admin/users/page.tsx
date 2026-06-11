@@ -1,7 +1,9 @@
 import {
   createUserAction,
+  resetUserPasswordAction,
   setUserPermissionAction,
   setUserStatusAction,
+  updateUserBasicInfoAction,
 } from "@/app/actions";
 import { AppShell } from "@/components/app-shell";
 import { Badge } from "@/components/ui/badge";
@@ -10,6 +12,7 @@ import { requirePermission } from "@/lib/auth";
 import { formatDate, toSearch } from "@/lib/format";
 import { staffTypeLabels, userStatusLabels } from "@/lib/labels";
 import { prisma } from "@/lib/prisma";
+import { UserStatus } from "@/generated/prisma/client";
 
 type AdminUsersPageProps = {
   searchParams?: Promise<{
@@ -18,6 +21,10 @@ type AdminUsersPageProps = {
     created?: string;
     statusUpdated?: string;
     permissionsUpdated?: string;
+    accountUpdated?: string;
+    passwordReset?: string;
+    error?: string;
+    status?: string;
   }>;
 };
 
@@ -28,15 +35,27 @@ export default async function AdminUsersPage({
   const params = await searchParams;
   const q = toSearch(params?.q);
   const selectedUserId = toSearch(params?.selected);
-  const userWhere = q
-    ? {
-        OR: [
-          { name: { contains: q, mode: "insensitive" as const } },
-          { email: { contains: q, mode: "insensitive" as const } },
-          { phone: { contains: q, mode: "insensitive" as const } },
-        ],
-      }
-    : {};
+  const statusFilter = toSearch(params?.status) || "VISIBLE";
+  const userWhere = {
+    AND: [
+      ...(q
+        ? [
+            {
+              OR: [
+                { name: { contains: q, mode: "insensitive" as const } },
+                { email: { contains: q, mode: "insensitive" as const } },
+                { phone: { contains: q, mode: "insensitive" as const } },
+              ],
+            },
+          ]
+        : []),
+      ...(statusFilter === "VISIBLE"
+        ? [{ status: { not: UserStatus.DISABLED } }]
+        : statusFilter === "ALL"
+          ? []
+          : [{ status: statusFilter as UserStatus }]),
+    ],
+  };
 
   const [
     users,
@@ -68,6 +87,8 @@ export default async function AdminUsersPage({
             roles: { include: { role: true } },
             permissions: { include: { permission: true } },
             staffProfile: true,
+            studentProfile: true,
+            parentProfile: true,
           },
         })
       : Promise.resolve(null),
@@ -115,15 +136,30 @@ export default async function AdminUsersPage({
         description="Danh sách tài khoản được tải gọn. Chỉ mở phân quyền riêng khi thật sự cần chỉnh."
       />
 
-      {params?.created || params?.statusUpdated || params?.permissionsUpdated ? (
+      {params?.created ||
+      params?.statusUpdated ||
+      params?.permissionsUpdated ||
+      params?.accountUpdated ||
+      params?.passwordReset ? (
         <div className="rounded-md border border-teal-200 bg-teal-50 px-3 py-2 text-sm text-teal-800">
           Đã cập nhật thông tin tài khoản.
+        </div>
+      ) : null}
+      {params?.error ? (
+        <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+          {params.error === "password_short"
+            ? "Mật khẩu mới cần có ít nhất 8 ký tự."
+            : params.error === "email_exists"
+              ? "Email này đã được dùng cho tài khoản khác."
+              : params.error === "phone_exists"
+                ? "Số điện thoại này đã được dùng cho tài khoản khác."
+                : "Thông tin tài khoản chưa hợp lệ."}
         </div>
       ) : null}
 
       <section className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_380px]">
         <div className="space-y-4">
-          <form className="flex flex-wrap items-end gap-3 rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+          <form className="grid gap-3 rounded-lg border border-slate-200 bg-white p-4 shadow-sm md:grid-cols-[minmax(260px,1fr)_220px_auto_auto] md:items-end">
             <label className="min-w-[260px] flex-1">
               <span className="text-sm font-medium text-slate-700">
                 Tìm tài khoản
@@ -134,6 +170,24 @@ export default async function AdminUsersPage({
                 placeholder="Tên, email hoặc số điện thoại"
                 className="mt-1 h-10 w-full rounded-md border border-slate-200 px-3 text-sm outline-none focus:border-[#08a7dc]"
               />
+            </label>
+            <label>
+              <span className="text-sm font-medium text-slate-700">
+                Trạng thái
+              </span>
+              <select
+                name="status"
+                defaultValue={statusFilter}
+                className="mt-1 h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm outline-none focus:border-[#08a7dc]"
+              >
+                <option value="VISIBLE">Đang dùng / tạm khóa</option>
+                <option value="ALL">Tất cả tài khoản</option>
+                {Object.entries(userStatusLabels).map(([value, label]) => (
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
+                ))}
+              </select>
             </label>
             <button
               type="submit"
@@ -230,6 +284,7 @@ export default async function AdminUsersPage({
                         <a
                           href={`/admin/users?${new URLSearchParams({
                             ...(q ? { q } : {}),
+                            ...(statusFilter ? { status: statusFilter } : {}),
                             selected: user.id,
                           }).toString()}#permissions`}
                           className="text-sm font-medium text-[#08a7dc] hover:text-[#17215c]"
@@ -317,6 +372,116 @@ export default async function AdminUsersPage({
                       {selectedUser.permissions.length}
                     </span>
                   </p>
+                </div>
+
+                <div
+                  id="account-settings"
+                  className="mb-4 grid gap-3 lg:grid-cols-2"
+                >
+                  <form
+                    action={updateUserBasicInfoAction.bind(null, selectedUser.id)}
+                    className="rounded-md border border-slate-200 bg-white p-3"
+                  >
+                    <input
+                      type="hidden"
+                      name="redirectTo"
+                      value={`/admin/users?${new URLSearchParams({
+                        ...(q ? { q } : {}),
+                        ...(statusFilter ? { status: statusFilter } : {}),
+                        selected: selectedUser.id,
+                      }).toString()}#account-settings`}
+                    />
+                    <h3 className="font-medium text-slate-950">
+                      Thông tin tài khoản
+                    </h3>
+                    <div className="mt-3 space-y-3">
+                      <label className="block">
+                        <span className="text-xs font-medium text-slate-600">
+                          Họ tên
+                        </span>
+                        <input
+                          name="name"
+                          required
+                          defaultValue={selectedUser.name}
+                          className="mt-1 h-9 w-full rounded-md border border-slate-200 px-3 text-sm outline-none focus:border-[#08a7dc]"
+                        />
+                      </label>
+                      <label className="block">
+                        <span className="text-xs font-medium text-slate-600">
+                          Email
+                        </span>
+                        <input
+                          name="email"
+                          type="email"
+                          defaultValue={selectedUser.email ?? ""}
+                          className="mt-1 h-9 w-full rounded-md border border-slate-200 px-3 text-sm outline-none focus:border-[#08a7dc]"
+                        />
+                      </label>
+                      <label className="block">
+                        <span className="text-xs font-medium text-slate-600">
+                          Số điện thoại
+                        </span>
+                        <input
+                          name="phone"
+                          defaultValue={selectedUser.phone ?? ""}
+                          className="mt-1 h-9 w-full rounded-md border border-slate-200 px-3 text-sm outline-none focus:border-[#08a7dc]"
+                        />
+                      </label>
+                      <button
+                        type="submit"
+                        className="h-9 rounded-md bg-[#17215c] px-3 text-xs font-medium text-white"
+                      >
+                        Lưu thông tin
+                      </button>
+                    </div>
+                  </form>
+
+                  <form
+                    action={resetUserPasswordAction.bind(null, selectedUser.id)}
+                    className="rounded-md border border-slate-200 bg-white p-3"
+                  >
+                    <input
+                      type="hidden"
+                      name="redirectTo"
+                      value={`/admin/users?${new URLSearchParams({
+                        ...(q ? { q } : {}),
+                        ...(statusFilter ? { status: statusFilter } : {}),
+                        selected: selectedUser.id,
+                      }).toString()}#account-settings`}
+                    />
+                    <h3 className="font-medium text-slate-950">
+                      Tạo / Reset mật khẩu
+                    </h3>
+                    <div className="mt-3 space-y-3">
+                      <label className="block">
+                        <span className="text-xs font-medium text-slate-600">
+                          Mật khẩu mới
+                        </span>
+                        <input
+                          name="password"
+                          type="password"
+                          minLength={8}
+                          required
+                          className="mt-1 h-9 w-full rounded-md border border-slate-200 px-3 text-sm outline-none focus:border-[#08a7dc]"
+                        />
+                      </label>
+                      <label className="flex items-start gap-2 text-xs text-slate-600">
+                        <input
+                          name="mustChangePassword"
+                          type="checkbox"
+                          defaultChecked
+                          className="mt-0.5"
+                        />
+                        Bắt buộc đổi mật khẩu khi đăng nhập lần tới
+                      </label>
+                      <button
+                        type="submit"
+                        className="h-9 rounded-md border border-slate-200 bg-white px-3 text-xs font-medium hover:bg-slate-50"
+                      >
+                        Reset mật khẩu
+                      </button>
+                    </div>
+                  </form>
                 </div>
 
                 <div className="max-h-[520px] overflow-y-auto rounded-md border border-slate-200">

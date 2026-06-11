@@ -47,7 +47,11 @@ export function AppShell({ session, children }: AppShellProps) {
               <CurrentPageTitle />
             </div>
             <div className="flex shrink-0 items-center gap-2">
-              <div className="hidden min-w-0 items-center gap-3 rounded-md border border-slate-200 bg-white px-2.5 py-2 sm:flex">
+              <a
+                href="/account"
+                className="hidden min-w-0 items-center gap-3 rounded-md border border-slate-200 bg-white px-2.5 py-2 hover:bg-slate-50 sm:flex"
+                title="Tài khoản của tôi"
+              >
                 <div className="grid size-8 place-items-center rounded-md bg-[#fff1a6] text-[#17215c]">
                   <UserCog size={17} aria-hidden="true" />
                 </div>
@@ -55,7 +59,7 @@ export function AppShell({ session, children }: AppShellProps) {
                   <p className="max-w-44 truncate text-sm font-medium">{roleText}</p>
                   <p className="text-xs text-slate-500">Đang đăng nhập</p>
                 </div>
-              </div>
+              </a>
               <form action={logoutAction}>
                 <button
                   type="submit"

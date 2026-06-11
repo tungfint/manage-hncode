@@ -86,6 +86,7 @@ export async function logoutAction() {
 
 export async function changePasswordAction(formData: FormData) {
   const session = await getSessionOrRedirect({ allowPasswordChange: true });
+  const wasRequired = session.mustChangePassword;
   const currentPassword = String(formData.get("currentPassword") ?? "");
   const newPassword = String(formData.get("newPassword") ?? "");
   const confirmPassword = String(formData.get("confirmPassword") ?? "");
@@ -144,5 +145,5 @@ export async function changePasswordAction(formData: FormData) {
     },
   });
 
-  redirect("/dashboard");
+  redirect(wasRequired ? "/dashboard" : "/account?passwordChanged=1");
 }

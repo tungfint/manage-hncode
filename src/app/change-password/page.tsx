@@ -1,4 +1,5 @@
 import { KeyRound } from "lucide-react";
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { changePasswordAction } from "@/app/login/actions";
 import { BrandLogo } from "@/components/brand-logo";
@@ -25,9 +26,12 @@ export default async function ChangePasswordPage({
     redirect("/login");
   }
 
-  if (!session.mustChangePassword) {
-    redirect("/dashboard");
-  }
+  const title = session.mustChangePassword
+    ? "Đổi mật khẩu lần đầu"
+    : "Đổi mật khẩu";
+  const description = session.mustChangePassword
+    ? "Tài khoản đang dùng mật khẩu tạm. Vui lòng đổi mật khẩu trước khi vào hệ thống."
+    : "Cập nhật mật khẩu mới để bảo vệ tài khoản đăng nhập.";
 
   return (
     <main className="grid min-h-screen place-items-center bg-[linear-gradient(135deg,#fff6b8_0%,#f8fbff_45%,#e8f7fc_100%)] p-4">
@@ -38,10 +42,10 @@ export default async function ChangePasswordPage({
             <KeyRound size={22} aria-hidden="true" />
           </div>
           <h1 className="text-2xl font-semibold text-slate-950">
-            Đổi mật khẩu lần đầu
+            {title}
           </h1>
           <p className="mt-1 text-sm text-slate-500">
-            Tài khoản đang dùng mật khẩu tạm. Vui lòng đổi mật khẩu trước khi vào hệ thống.
+            {description}
           </p>
         </div>
 
@@ -97,6 +101,14 @@ export default async function ChangePasswordPage({
             Cập nhật mật khẩu
           </button>
         </form>
+        {!session.mustChangePassword ? (
+          <Link
+            href="/account"
+            className="mt-4 inline-flex w-full justify-center rounded-md border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+          >
+            Quay lại tài khoản của tôi
+          </Link>
+        ) : null}
       </section>
     </main>
   );

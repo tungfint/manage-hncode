@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { updateStaffAction } from "@/app/actions";
+import { resetUserPasswordAction, updateStaffAction } from "@/app/actions";
 import { AppShell } from "@/components/app-shell";
 import { PageHeader } from "@/components/ui/page-header";
 import { requirePermission } from "@/lib/auth";
@@ -10,7 +10,7 @@ import { prisma } from "@/lib/prisma";
 
 type EditStaffPageProps = {
   params: Promise<{ id: string }>;
-  searchParams?: Promise<{ updated?: string }>;
+  searchParams?: Promise<{ updated?: string; passwordReset?: string; error?: string }>;
 };
 
 export default async function EditStaffPage({
@@ -67,6 +67,16 @@ export default async function EditStaffPage({
       {query?.updated ? (
         <div className="rounded-md border border-teal-200 bg-teal-50 px-3 py-2 text-sm text-teal-800">
           Đã cập nhật nhân sự.
+        </div>
+      ) : null}
+      {query?.passwordReset ? (
+        <div className="rounded-md border border-teal-200 bg-teal-50 px-3 py-2 text-sm text-teal-800">
+          Đã reset mật khẩu cho nhân sự.
+        </div>
+      ) : null}
+      {query?.error === "password_short" ? (
+        <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+          Mật khẩu mới cần có ít nhất 8 ký tự.
         </div>
       ) : null}
       <form
@@ -194,6 +204,51 @@ export default async function EditStaffPage({
             className="h-10 rounded-md bg-[#17215c] px-4 text-sm font-medium text-white hover:bg-[#25308d]"
           >
             Lưu thay đổi
+          </button>
+        </div>
+      </form>
+      <form
+        action={resetUserPasswordAction.bind(null, staff.userId)}
+        className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm"
+      >
+        <input type="hidden" name="redirectTo" value={`/staff/${staff.id}/edit`} />
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="font-semibold text-slate-950">
+              Tạo / Reset mật khẩu
+            </h2>
+            <p className="mt-1 text-sm text-slate-500">
+              Dùng khi nhân sự mới cần mật khẩu đăng nhập hoặc cần cấp lại mật khẩu.
+            </p>
+          </div>
+          <label className="flex items-start gap-2 text-sm text-slate-600">
+            <input
+              name="mustChangePassword"
+              type="checkbox"
+              defaultChecked
+              className="mt-1"
+            />
+            Bắt buộc đổi mật khẩu khi đăng nhập lần tới
+          </label>
+        </div>
+        <div className="mt-4 flex flex-wrap items-end gap-3">
+          <label className="min-w-[260px] flex-1">
+            <span className="text-sm font-medium text-slate-700">
+              Mật khẩu mới
+            </span>
+            <input
+              name="password"
+              type="password"
+              minLength={8}
+              required
+              className="mt-1 h-10 w-full rounded-md border border-slate-200 px-3 text-sm outline-none focus:border-[#08a7dc]"
+            />
+          </label>
+          <button
+            type="submit"
+            className="h-10 rounded-md bg-[#17215c] px-4 text-sm font-medium text-white hover:bg-[#25308d]"
+          >
+            Reset mật khẩu
           </button>
         </div>
       </form>
