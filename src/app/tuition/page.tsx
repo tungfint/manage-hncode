@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { createTuitionChargeAction, recordPaymentAction } from "@/app/actions";
 import { AppShell } from "@/components/app-shell";
 import { ConfirmSubmitButton } from "@/components/confirm-submit-button";
@@ -162,6 +163,14 @@ export default async function TuitionPage({ searchParams }: TuitionPageProps) {
       <PageHeader
         title="Học phí"
         description="Chọn lớp, chọn học viên, kiểm tra công nợ và ghi nhận thanh toán."
+        action={
+          <Link
+            href="/tuition/class"
+            className="inline-flex h-10 items-center rounded-md bg-[#17215c] px-4 text-sm font-medium text-white hover:bg-[#25308d]"
+          >
+            Học phí theo lớp
+          </Link>
+        }
       />
       {params?.created ? (
         <div className="rounded-md border border-teal-200 bg-teal-50 px-3 py-2 text-sm text-teal-800">

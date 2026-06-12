@@ -6,6 +6,7 @@ import path from "node:path";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import ExcelJS from "exceljs";
+import nodemailer from "nodemailer";
 import { z } from "zod";
 import {
   AttendanceStatus,
@@ -77,6 +78,18 @@ const numberField = z.preprocess(
 
 const TEMP_LINKED_ACCOUNT_PASSWORD = "HNCODElaptrinhvuive";
 const UPLOAD_ROOT = path.join(process.cwd(), "public", "uploads");
+const DEFAULT_TUITION_MESSAGE_TEMPLATE = [
+  "Kính gửi phụ huynh học viên {{studentName}},",
+  "",
+  "HNCode thông báo khoản học phí lớp {{classCode}} - {{className}}.",
+  "Nội dung: {{content}}",
+  "Số tiền cần thanh toán: {{amount}}",
+  "Hạn đóng: {{dueDate}}",
+  "Nội dung chuyển khoản: {{qrContent}}",
+  "",
+  "Sau khi chuyển khoản, phụ huynh vui lòng gửi lại ảnh xác nhận để trung tâm đối soát.",
+  "Trân trọng.",
+].join("\n");
 
 function safeRedirectPath(value: FormDataEntryValue | null, fallback: string) {
   if (typeof value !== "string") {
@@ -91,6 +104,48 @@ function redirectWithFlag(path: string, flag: string): never {
   const [base, hash] = path.split("#");
   const separator = base.includes("?") ? "&" : "?";
   redirect(`${base}${separator}${flag}${hash ? `#${hash}` : ""}`);
+}
+
+function escapeHtml(value: string) {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+function renderTemplate(template: string, values: Record<string, string>) {
+  return template.replace(/\{\{\s*(\w+)\s*\}\}/g, (_, key: string) => {
+    return values[key] ?? "";
+  });
+}
+
+function vietQrImageUrl(input: {
+  bankCode?: string | null;
+  bankAccount?: string | null;
+  accountName?: string | null;
+  amount: number;
+  content: string;
+}) {
+  if (!input.bankCode || !input.bankAccount || input.amount <= 0) {
+    return null;
+  }
+
+  const base = `https://img.vietqr.io/image/${encodeURIComponent(
+    input.bankCode,
+  )}-${encodeURIComponent(input.bankAccount)}-compact2.png`;
+  const params = new URLSearchParams({
+    amount: String(Math.round(input.amount)),
+    addInfo: input.content,
+    accountName: input.accountName ?? "HNCode",
+  });
+
+  return `${base}?${params.toString()}`;
+}
+
+function smtpConfigured() {
+  return Boolean(process.env.SMTP_HOST && process.env.SMTP_FROM);
 }
 
 function sessionDateTime(date: Date, time: string) {
@@ -3522,6 +3577,7 @@ export async function createExamAction(formData: FormData) {
 
 export async function recordPaymentAction(chargeId: string, formData: FormData) {
   const session = await requirePermission("payment.manage");
+  const redirectTo = safeRedirectPath(formData.get("redirectTo"), "/tuition");
   const schema = z.object({
     amount: z.string().trim().min(1),
     method: z.enum(PaymentMethod),
@@ -3577,12 +3633,14 @@ export async function recordPaymentAction(chargeId: string, formData: FormData) 
     entityId: payment.id,
   });
   revalidatePath("/tuition");
+  revalidatePath("/tuition/class");
   revalidatePath("/payments");
-  redirect("/tuition?paid=1");
+  redirectWithFlag(redirectTo, "paid=1");
 }
 
 export async function createTuitionChargeAction(formData: FormData) {
   const session = await requirePermission("tuition.manage");
+  const redirectTo = safeRedirectPath(formData.get("redirectTo"), "/tuition");
   const schema = z.object({
     studentId: z.string().min(1),
     classId: optionalString,
@@ -3626,7 +3684,299 @@ export async function createTuitionChargeAction(formData: FormData) {
     entityId: charge.id,
   });
   revalidatePath("/tuition");
-  redirect("/tuition?created=1");
+  revalidatePath("/tuition/class");
+  redirectWithFlag(redirectTo, "created=1");
+}
+
+export async function updateTuitionPaymentSettingAction(formData: FormData) {
+  const session = await requirePermission("tuition.manage");
+  const redirectTo = safeRedirectPath(formData.get("redirectTo"), "/tuition/class");
+  const schema = z.object({
+    bankCode: optionalString,
+    bankAccount: optionalString,
+    accountName: optionalString,
+    messageTemplate: z.string().trim().min(20),
+  });
+  const parsed = schema.parse({
+    bankCode: formData.get("bankCode"),
+    bankAccount: formData.get("bankAccount"),
+    accountName: formData.get("accountName"),
+    messageTemplate: formData.get("messageTemplate"),
+  });
+
+  await prisma.tuitionPaymentSetting.upsert({
+    where: { id: "default" },
+    update: {
+      bankCode: parsed.bankCode,
+      bankAccount: parsed.bankAccount,
+      accountName: parsed.accountName,
+      messageTemplate: parsed.messageTemplate,
+    },
+    create: {
+      id: "default",
+      bankCode: parsed.bankCode,
+      bankAccount: parsed.bankAccount,
+      accountName: parsed.accountName,
+      messageTemplate: parsed.messageTemplate,
+    },
+  });
+
+  await audit({
+    userId: session.userId,
+    action: "tuition_payment_setting.update",
+    entityType: "tuition_payment_setting",
+    entityId: "default",
+  });
+  revalidatePath("/tuition/class");
+  redirectWithFlag(redirectTo, "settingsUpdated=1");
+}
+
+export async function sendClassTuitionEmailsAction(formData: FormData) {
+  const session = await requirePermission("tuition.manage");
+  const classId = String(formData.get("classId") ?? "");
+  const redirectTo = safeRedirectPath(formData.get("redirectTo"), "/tuition/class");
+  const chargeIds = formData
+    .getAll("chargeId")
+    .map((value) => String(value))
+    .filter(Boolean);
+
+  if (!classId || !chargeIds.length) {
+    redirectWithFlag(redirectTo, "emailError=empty");
+  }
+
+  await ensureClassPermission(session, classId, "tuition.manage");
+
+  if (!smtpConfigured()) {
+    redirectWithFlag(redirectTo, "emailError=smtp");
+  }
+
+  const [setting, charges] = await Promise.all([
+    prisma.tuitionPaymentSetting.findUnique({ where: { id: "default" } }),
+    prisma.tuitionCharge.findMany({
+      where: {
+        id: { in: chargeIds },
+        classId,
+      },
+      include: {
+        courseClass: true,
+        student: {
+          include: {
+            parents: {
+              include: { parent: true },
+              orderBy: { id: "asc" },
+            },
+          },
+        },
+      },
+    }),
+  ]);
+
+  const bankCode = setting?.bankCode ?? process.env.HNCODE_QR_BANK_CODE ?? "";
+  const bankAccount =
+    setting?.bankAccount ?? process.env.HNCODE_QR_BANK_ACCOUNT ?? "";
+  const accountName =
+    setting?.accountName ?? process.env.HNCODE_QR_ACCOUNT_NAME ?? "HNCode";
+  const messageTemplate =
+    setting?.messageTemplate ?? DEFAULT_TUITION_MESSAGE_TEMPLATE;
+  const transporter = nodemailer.createTransport({
+    host: process.env.SMTP_HOST,
+    port: Number(process.env.SMTP_PORT ?? 587),
+    secure: process.env.SMTP_SECURE === "true",
+    auth: process.env.SMTP_USER
+      ? {
+          user: process.env.SMTP_USER,
+          pass: process.env.SMTP_PASSWORD,
+        }
+      : undefined,
+  });
+  let sent = 0;
+  let skipped = 0;
+  let failed = 0;
+
+  for (const charge of charges) {
+    const parentEmails = charge.student.parents
+      .map((item) => item.parent.email)
+      .filter((email): email is string => Boolean(email));
+    const amount =
+      Number(charge.amountDue.toString()) -
+      Number(charge.discountAmount.toString()) -
+      Number(charge.amountPaid.toString());
+
+    if (!parentEmails.length || amount <= 0 || !charge.courseClass) {
+      skipped += 1;
+      continue;
+    }
+
+    const qrContent = `HNCODE-${charge.id}`;
+    const qrUrl = vietQrImageUrl({
+      bankCode,
+      bankAccount,
+      accountName,
+      amount,
+      content: qrContent,
+    });
+    const amountText = new Intl.NumberFormat("vi-VN", {
+      style: "currency",
+      currency: "VND",
+      maximumFractionDigits: 0,
+    }).format(amount);
+    const dueDateText = charge.dueDate
+      ? new Intl.DateTimeFormat("vi-VN").format(charge.dueDate)
+      : "-";
+    const text = renderTemplate(messageTemplate, {
+      studentName: charge.student.fullName,
+      classCode: charge.courseClass.classCode,
+      className: charge.courseClass.name,
+      content: charge.note ?? "Học phí",
+      amount: amountText,
+      dueDate: dueDateText,
+      qrContent,
+      qrUrl: qrUrl ?? "",
+    });
+    const escapedText = escapeHtml(text).replace(/\n/g, "<br />");
+    const html = qrUrl
+      ? `${escapedText}<br /><br /><img src="${escapeHtml(qrUrl)}" alt="QR thanh toán học phí" style="max-width:260px;border:1px solid #e2e8f0;border-radius:8px" />`
+      : escapedText;
+
+    try {
+      await transporter.sendMail({
+        from: process.env.SMTP_FROM,
+        to: parentEmails.join(","),
+        subject: `Thông báo học phí ${charge.courseClass.classCode}`,
+        text: qrUrl ? `${text}\n\nQR thanh toán: ${qrUrl}` : text,
+        html,
+      });
+      await audit({
+        userId: session.userId,
+        action: "tuition_email.send",
+        entityType: "tuition_charge",
+        entityId: charge.id,
+        afterData: { parentEmails },
+      });
+      sent += 1;
+    } catch (error) {
+      await audit({
+        userId: session.userId,
+        action: "tuition_email.failed",
+        entityType: "tuition_charge",
+        entityId: charge.id,
+        afterData: {
+          error: error instanceof Error ? error.message : "unknown",
+        },
+      });
+      failed += 1;
+    }
+  }
+
+  revalidatePath("/tuition/class");
+  redirectWithFlag(redirectTo, `emailSent=${sent}&emailSkipped=${skipped}&emailFailed=${failed}`);
+}
+
+export async function createClassTuitionChargesAction(formData: FormData) {
+  const session = await requirePermission("tuition.manage");
+  const schema = z.object({
+    classId: z.string().min(1),
+    content: z.string().trim().min(2),
+    dueDate: dateField,
+    skipOpenCharges: z.preprocess((value) => value === "on", z.boolean()),
+  });
+  const parsed = schema.parse({
+    classId: formData.get("classId"),
+    content: formData.get("content"),
+    dueDate: formData.get("dueDate"),
+    skipOpenCharges: formData.get("skipOpenCharges"),
+  });
+
+  await ensureClassPermission(session, parsed.classId, "tuition.manage");
+
+  const courseClass = await prisma.courseClass.findUnique({
+    where: { id: parsed.classId },
+    select: {
+      id: true,
+      classCode: true,
+      name: true,
+      students: {
+        where: { status: EnrollmentStatus.ACTIVE },
+        select: { studentId: true },
+        orderBy: { joinedAt: "asc" },
+      },
+    },
+  });
+
+  if (!courseClass) {
+    redirect("/tuition/class");
+  }
+
+  let created = 0;
+  let skipped = 0;
+
+  for (const enrollment of courseClass.students) {
+    const studentId = enrollment.studentId;
+    const amount = Number(String(formData.get(`amount:${studentId}`) ?? "").trim());
+    const discount = Number(
+      String(formData.get(`discount:${studentId}`) ?? "0").trim() || "0",
+    );
+
+    if (!Number.isFinite(amount) || amount <= 0) {
+      skipped += 1;
+      continue;
+    }
+
+    if (parsed.skipOpenCharges) {
+      const openCharge = await prisma.tuitionCharge.findFirst({
+        where: {
+          studentId,
+          classId: parsed.classId,
+          status: {
+            in: [
+              TuitionStatus.UNPAID,
+              TuitionStatus.PARTIAL,
+              TuitionStatus.OVERDUE,
+            ],
+          },
+        },
+        select: { id: true },
+      });
+
+      if (openCharge) {
+        skipped += 1;
+        continue;
+      }
+    }
+
+    const charge = await prisma.tuitionCharge.create({
+      data: {
+        studentId,
+        classId: parsed.classId,
+        amountDue: String(amount),
+        discountAmount:
+          Number.isFinite(discount) && discount > 0 ? String(discount) : "0",
+        dueDate: parsed.dueDate,
+        status: TuitionStatus.UNPAID,
+        note: parsed.content,
+        createdByUserId: session.userId,
+      },
+    });
+
+    await audit({
+      userId: session.userId,
+      action: "tuition_charge.bulk_create",
+      entityType: "tuition_charge",
+      entityId: charge.id,
+      afterData: {
+        classId: parsed.classId,
+        studentId,
+        content: parsed.content,
+      },
+    });
+    created += 1;
+  }
+
+  revalidatePath("/tuition");
+  revalidatePath("/tuition/class");
+  redirect(
+    `/tuition/class?classId=${parsed.classId}&created=${created}&skipped=${skipped}`,
+  );
 }
 
 export async function createSalaryRuleAction(formData: FormData) {

@@ -103,6 +103,13 @@ export const navGroups: NavGroup[] = [
         description: "Công nợ và khoản phải thu",
       },
       {
+        label: "Học phí theo lớp",
+        href: "/tuition/class",
+        icon: ReceiptText,
+        permission: "tuition.view",
+        description: "Tạo danh sách thu, QR và báo cáo từng lớp",
+      },
+      {
         label: "Thanh toán",
         href: "/payments",
         icon: Banknote,

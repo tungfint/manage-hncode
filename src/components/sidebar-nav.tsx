@@ -30,6 +30,7 @@ function currentNavItem(pathname: string) {
 
 export function SidebarNav({ permissions }: SidebarNavProps) {
   const pathname = usePathname();
+  const activeItem = currentNavItem(pathname);
   const visibleGroups = navGroups
     .map((group) => ({
       ...group,
@@ -47,7 +48,7 @@ export function SidebarNav({ permissions }: SidebarNavProps) {
           <div className="space-y-1">
             {group.items.map((item) => {
               const Icon = item.icon;
-              const active = isActivePath(pathname, item.href);
+              const active = activeItem?.href === item.href;
 
               return (
                 <a
@@ -57,7 +58,7 @@ export function SidebarNav({ permissions }: SidebarNavProps) {
                   className={[
                     "group flex min-h-10 items-center gap-3 rounded-md border px-3 text-sm font-medium transition",
                     active
-                      ? "border-yellow-300 bg-[#fff0a6] text-[#17215c] shadow-sm"
+                      ? "border-yellow-300 bg-[#fff0a6] font-semibold text-[#17215c] shadow-sm"
                       : "border-transparent text-slate-600 hover:border-yellow-200 hover:bg-[#fff9d8] hover:text-[#17215c]",
                   ].join(" ")}
                 >

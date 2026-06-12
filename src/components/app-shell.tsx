@@ -72,7 +72,9 @@ export function AppShell({ session, children }: AppShellProps) {
             </div>
           </header>
 
-          <div className="flex flex-1 flex-col gap-5 p-4 sm:p-6">{children}</div>
+          <div className="page-soft-enter flex flex-1 flex-col gap-5 p-4 sm:p-6">
+            {children}
+          </div>
         </main>
       </div>
     </div>

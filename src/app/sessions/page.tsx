@@ -13,6 +13,15 @@ import { ensureUpcomingSessions } from "@/lib/sessions";
 
 const pageSize = 20;
 
+function dateKey(value: Date) {
+  const date = new Date(value);
+  return [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, "0"),
+    String(date.getDate()).padStart(2, "0"),
+  ].join("-");
+}
+
 type SessionsPageProps = {
   searchParams?: Promise<{
     q?: string;
@@ -53,12 +62,13 @@ export default async function SessionsPage({ searchParams }: SessionsPageProps) 
       room: true,
       teachers: { include: { teacher: true } },
     },
-    orderBy: [{ sessionDate: "desc" }, { startTime: "asc" }],
+    orderBy: [{ sessionDate: "asc" }, { startTime: "asc" }],
       skip: (page - 1) * pageSize,
       take: pageSize,
     }),
     prisma.classSession.count({ where }),
   ]);
+  const todayKey = dateKey(new Date());
 
   return (
     <AppShell session={session}>
@@ -105,10 +115,27 @@ export default async function SessionsPage({ searchParams }: SessionsPageProps) 
             </tr>
           </thead>
           <tbody className="divide-y divide-zinc-100">
-            {sessions.map((item) => (
-              <tr key={item.id}>
+            {sessions.map((item) => {
+              const isToday = dateKey(item.sessionDate) === todayKey;
+
+              return (
+              <tr
+                key={item.id}
+                className={
+                  isToday
+                    ? "border-l-4 border-l-[#08a7dc] bg-[#fff8d7]"
+                    : "hover:bg-slate-50"
+                }
+              >
                 <td className="px-4 py-4 font-medium">
-                  {formatDate(item.sessionDate)}
+                  <div className="flex items-center gap-2">
+                    <span>{formatDate(item.sessionDate)}</span>
+                    {isToday ? (
+                      <span className="rounded-full bg-[#17215c] px-2 py-0.5 text-[11px] font-semibold text-white">
+                        Hôm nay
+                      </span>
+                    ) : null}
+                  </div>
                 </td>
                 <td className="px-4 py-4 text-zinc-600">
                   {item.startTime} - {item.endTime}
@@ -131,7 +158,8 @@ export default async function SessionsPage({ searchParams }: SessionsPageProps) 
                   </a>
                 </td>
               </tr>
-            ))}
+              );
+            })}
           </tbody>
         </table>
       </div>

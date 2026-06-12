@@ -25,6 +25,16 @@ AUTH_SECRET="chuoi-bi-mat-du-dai"
 GOOGLE_CLIENT_ID=""
 GOOGLE_CLIENT_SECRET=""
 GOOGLE_REDIRECT_URI="http://localhost:3000/login/google/callback"
+HNCODE_QR_BANK_CODE=""
+HNCODE_QR_BANK_ACCOUNT=""
+HNCODE_QR_ACCOUNT_NAME="HNCode"
+SMTP_HOST=""
+SMTP_PORT="587"
+SMTP_SECURE="false"
+SMTP_USER=""
+SMTP_PASSWORD=""
+SMTP_FROM=""
+BANK_WEBHOOK_SECRET=""
 ```
 
 Google Login là tùy chọn. Hệ thống chỉ cho đăng nhập Google khi email Google đã tồn tại trong bảng tài khoản nội bộ.
@@ -118,7 +128,8 @@ Mật khẩu mặc định: `Password123!`
 - `/classes`, `/classes/new`, `/classes/[id]`, `/classes/[id]/edit`
 - `/schedule`, `/sessions`, `/sessions/[id]/attendance`
 - `/exams`, `/exams/[id]/scores`, `/exams/[id]/scores/template`
-- `/tuition`, `/payments`
+- `/tuition`, `/tuition/class`, `/payments`
+- Webhook đối soát chuyển khoản: `POST /api/webhooks/bank-transfer`, header `x-webhook-secret` bằng `BANK_WEBHOOK_SECRET`, nội dung chuyển khoản cần có mã `HNCODE-<mã khoản học phí>`.
 - `/salary/rules`, `/payrolls`, `/payrolls/[id]`
 - `/admin/users`, `/admin/roles`, `/admin/audit-logs`
 - `/reports/learning`, `/reports/finance`, `/reports/staff`

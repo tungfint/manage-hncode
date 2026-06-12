@@ -666,6 +666,32 @@ model TuitionCharge {
   @@map("tuition_charges")
 }
 
+model TuitionPaymentSetting {
+  id              String   @id
+  bankCode        String?
+  bankAccount     String?
+  accountName     String?
+  messageTemplate String   @default("Kính gửi phụ huynh học viên {{studentName}},\n\nHNCode thông báo khoản học phí lớp {{classCode}} - {{className}}.\nNội dung: {{content}}\nSố tiền cần thanh toán: {{amount}}\nHạn đóng: {{dueDate}}\nNội dung chuyển khoản: {{qrContent}}\n\nSau khi chuyển khoản, phụ huynh vui lòng gửi lại ảnh xác nhận để trung tâm đối soát.\nTrân trọng.")
+  updatedAt       DateTime @updatedAt
+
+  @@map("tuition_payment_settings")
+}
+
+model BankTransferEvent {
+  id              String   @id @default(cuid())
+  provider        String
+  reference       String   @unique
+  amount          Decimal? @db.Decimal(12, 2)
+  description     String?
+  status          String
+  tuitionChargeId String?
+  rawData         Json?
+  createdAt       DateTime @default(now())
+
+  @@index([tuitionChargeId])
+  @@map("bank_transfer_events")
+}
+
 model Payment {
   id               String        @id @default(cuid())
   tuitionChargeId  String
