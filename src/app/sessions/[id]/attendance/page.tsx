@@ -1,6 +1,7 @@
 import {
   createSessionCommentAction,
   deleteSessionAction,
+  deleteSessionPermanentlyAction,
   markAttendanceAction,
   saveSessionNotesAction,
   updateSessionTeachersAction,
@@ -117,6 +118,7 @@ export default async function AttendancePage({
   const createComment = createSessionCommentAction.bind(null, id);
   const uploadAttachment = uploadSessionAttachmentAction.bind(null, id);
   const canManageSession = can(session, "session.manage");
+  const isAdmin = session.roles.includes("admin");
   const canEditSessionNotes =
     canManageSession &&
     (!isClassRestrictedStaff(session) || isWithinSessionNoteWindow(classSession));
@@ -135,6 +137,16 @@ export default async function AttendancePage({
                   className="inline-flex h-10 items-center rounded-md border border-red-200 bg-white px-4 text-sm font-medium text-red-700 hover:bg-red-50"
                 >
                   Hủy buổi học
+                </ConfirmSubmitButton>
+              </form>
+            ) : null}
+            {isAdmin ? (
+              <form action={deleteSessionPermanentlyAction.bind(null, id)}>
+                <ConfirmSubmitButton
+                  message="Xóa hẳn buổi học này? Điểm danh, giáo viên thực tế và file đính kèm của buổi học sẽ bị xóa khỏi hệ thống."
+                  className="inline-flex h-10 items-center rounded-md bg-red-600 px-4 text-sm font-medium text-white hover:bg-red-700"
+                >
+                  Xóa hẳn
                 </ConfirmSubmitButton>
               </form>
             ) : null}

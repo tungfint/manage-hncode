@@ -2337,6 +2337,35 @@ export async function deleteSessionAction(classId: string, sessionId: string) {
   redirect(`/classes/${classId}?sessionDeleted=1`);
 }
 
+export async function deleteSessionPermanentlyAction(sessionId: string) {
+  const session = await requirePermission("session.manage");
+
+  if (!session.roles.includes("admin")) {
+    redirect("/forbidden");
+  }
+
+  const classSession = await prisma.classSession.findUnique({
+    where: { id: sessionId },
+    select: { classId: true },
+  });
+
+  if (!classSession) {
+    redirect("/sessions");
+  }
+
+  await prisma.classSession.delete({ where: { id: sessionId } });
+  await audit({
+    userId: session.userId,
+    action: "session.delete_permanent",
+    entityType: "class_session",
+    entityId: sessionId,
+    afterData: classSession,
+  });
+  revalidatePath(`/classes/${classSession.classId}`);
+  revalidatePath("/sessions");
+  redirect("/sessions?sessionDeleted=1");
+}
+
 export async function createUserAction(formData: FormData) {
   const session = await requirePermission("user.manage");
   const schema = z.object({

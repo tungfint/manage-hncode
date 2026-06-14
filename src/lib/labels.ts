@@ -166,6 +166,7 @@ const auditActionLabels: Record<string, string> = {
   "session.create": "Tạo buổi học",
   "session.update": "Cập nhật buổi học",
   "session.delete": "Xóa buổi học",
+  "session.delete_permanent": "Xóa hẳn buổi học",
   "session_teacher.update": "Cập nhật giáo viên buổi học",
   "session_attachment.upload": "Tải file buổi học",
   "attendance.bulk_upsert": "Cập nhật điểm danh",
