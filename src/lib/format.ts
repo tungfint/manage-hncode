@@ -3,11 +3,12 @@ export function formatDate(value: Date | string | null | undefined) {
     return "-";
   }
 
-  return new Intl.DateTimeFormat("vi-VN", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-  }).format(new Date(value));
+  const date = new Date(value);
+  const day = String(date.getDate()).padStart(2, "0");
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const year = date.getFullYear();
+
+  return `${day}/${month}/${year}`;
 }
 
 export function formatCurrency(value: unknown) {
@@ -30,13 +31,11 @@ export function formatDateTime(value: Date | string | null | undefined) {
     return "-";
   }
 
-  return new Intl.DateTimeFormat("vi-VN", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(new Date(value));
+  const date = new Date(value);
+  const hour = String(date.getHours()).padStart(2, "0");
+  const minute = String(date.getMinutes()).padStart(2, "0");
+
+  return `${formatDate(date)} ${hour}:${minute}`;
 }
 
 export function toInt(value: string | string[] | undefined, fallback = 1) {

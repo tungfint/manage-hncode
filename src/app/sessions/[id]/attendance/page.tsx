@@ -29,6 +29,7 @@ type AttendancePageProps = {
     teachersUpdated?: string;
     noteError?: string;
     notesSaved?: string;
+    teacherError?: string;
   }>;
 };
 
@@ -69,6 +70,11 @@ export default async function AttendancePage({
             include: { student: true },
             orderBy: { student: { fullName: "asc" } },
           },
+          teachers: {
+            where: { status: "ACTIVE" },
+            include: { teacher: true },
+            orderBy: { assignedAt: "desc" },
+          },
         },
       },
       room: true,
@@ -93,17 +99,44 @@ export default async function AttendancePage({
     redirect("/forbidden");
   }
 
-  const teacherOptions = await prisma.user.findMany({
-    where: {
-      status: "ACTIVE",
-      staffProfile: {
-        staffType: {
-          in: ["TEACHER_MAIN", "TEACHER_ASSISTANT"],
+  const isAdmin = session.roles.includes("admin");
+  const isRestrictedStaff = isClassRestrictedStaff(session);
+  const isInSessionEditWindow = isWithinSessionNoteWindow(classSession);
+  const canManageSession = can(session, "session.manage");
+  const canEditSessionDetails =
+    canManageSession && (!isRestrictedStaff || isInSessionEditWindow);
+  const canManageAttendance =
+    can(session, "attendance.manage") && (!isRestrictedStaff || isInSessionEditWindow);
+  const canCancelSession = canManageSession && !isRestrictedStaff;
+  const allTeacherOptions = (
+    await prisma.user.findMany({
+      where: {
+        status: "ACTIVE",
+        staffProfile: {
+          staffType: {
+            in: ["TEACHER_MAIN", "TEACHER_ASSISTANT"],
+          },
         },
       },
-    },
-    orderBy: { name: "asc" },
-  });
+      orderBy: { name: "asc" },
+    })
+  ).map((teacher) => ({
+    id: teacher.id,
+    name: teacher.name,
+    role: null as "MAIN" | "ASSISTANT" | null,
+  }));
+  const assignedTeacherOptions = classSession.courseClass.teachers.map((item) => ({
+    id: item.teacherUserId,
+    name: item.teacher.name,
+    role: item.teacherRole,
+  }));
+  const teacherOptions = isAdmin ? allTeacherOptions : assignedTeacherOptions;
+  const mainTeacherOptions = isRestrictedStaff
+    ? teacherOptions.filter((teacher) => teacher.id === session.userId)
+    : teacherOptions;
+  const assistantTeacherOptions = isRestrictedStaff
+    ? teacherOptions.filter((teacher) => teacher.role === "ASSISTANT")
+    : teacherOptions;
   const actualMainTeacher = classSession.teachers.find((item) => item.role === "MAIN");
   const actualAssistantTeacher = classSession.teachers.find(
     (item) => item.role === "ASSISTANT",
@@ -117,11 +150,6 @@ export default async function AttendancePage({
   const markAttendance = markAttendanceAction.bind(null, id);
   const createComment = createSessionCommentAction.bind(null, id);
   const uploadAttachment = uploadSessionAttachmentAction.bind(null, id);
-  const canManageSession = can(session, "session.manage");
-  const isAdmin = session.roles.includes("admin");
-  const canEditSessionNotes =
-    canManageSession &&
-    (!isClassRestrictedStaff(session) || isWithinSessionNoteWindow(classSession));
 
   return (
     <AppShell session={session}>
@@ -130,7 +158,7 @@ export default async function AttendancePage({
         description={`${classSession.startTime} - ${classSession.endTime} · ${classSession.room?.name ?? "Chưa chọn phòng"}`}
         action={
           <div className="flex flex-wrap gap-2">
-            {canManageSession && classSession.status !== "CANCELLED" ? (
+            {canCancelSession && classSession.status !== "CANCELLED" ? (
               <form action={deleteSessionAction.bind(null, classSession.classId, id)}>
                 <ConfirmSubmitButton
                   message="Hủy buổi học này? Điểm danh, nhận xét và tài liệu liên quan vẫn được giữ để tra cứu."
@@ -185,7 +213,13 @@ export default async function AttendancePage({
 
       {qs?.noteError === "time_window" ? (
         <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-          Giáo viên chỉ được ghi nội dung từ trước giờ học 1 giờ đến sau giờ học 1 giờ.
+          Giáo viên chỉ được cập nhật buổi học từ trước giờ học 1 giờ đến sau giờ học 1 giờ.
+        </div>
+      ) : null}
+
+      {qs?.teacherError === "assistant_scope" ? (
+        <div className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800">
+          Giáo viên phụ được chọn phải nằm trong danh sách đã phân công của lớp.
         </div>
       ) : null}
 
@@ -228,7 +262,7 @@ export default async function AttendancePage({
                         <select
                           name={`attendance:${enrollment.studentId}`}
                           defaultValue={attendance?.status ?? "PRESENT"}
-                          disabled={!can(session, "attendance.manage")}
+                          disabled={!canManageAttendance}
                           className="h-10 rounded-md border border-zinc-200 px-3 text-sm outline-none focus:border-teal-500 disabled:bg-zinc-100"
                         >
                           {Object.entries(attendanceStatusLabels).map(
@@ -244,7 +278,7 @@ export default async function AttendancePage({
                         <textarea
                           name={`note:${enrollment.studentId}`}
                           defaultValue={attendance?.note ?? ""}
-                          disabled={!can(session, "attendance.manage")}
+                          disabled={!canManageAttendance}
                           rows={3}
                           className="w-full rounded-md border border-zinc-200 px-3 py-2 text-sm outline-none focus:border-teal-500 disabled:bg-zinc-100"
                         />
@@ -258,7 +292,7 @@ export default async function AttendancePage({
               </tbody>
             </table>
           </div>
-          {can(session, "attendance.manage") ? (
+          {canManageAttendance ? (
             <div className="flex justify-end border-t border-zinc-200 p-4">
               <button
                 type="submit"
@@ -284,32 +318,41 @@ export default async function AttendancePage({
               ) : null}
             </div>
           </div>
-          {canManageSession ? (
+          {canEditSessionDetails ? (
             <form
               action={updateTeachers}
               className="rounded-lg border border-slate-200 bg-slate-50 p-4 shadow-sm xl:col-span-2"
             >
               <h2 className="mb-3 font-semibold">Chọn giáo viên thực tế</h2>
               <div className="grid gap-3 md:grid-cols-[1fr_1fr_120px]">
-                <select
-                  name="mainTeacherUserId"
-                  defaultValue={actualMainTeacher?.teacherUserId ?? ""}
-                  className="h-10 rounded-md border border-zinc-200 bg-white px-3 text-sm outline-none focus:border-teal-500"
-                >
-                  <option value="">Chọn giáo viên chính</option>
-                  {teacherOptions.map((teacher) => (
-                    <option key={teacher.id} value={teacher.id}>
-                      {teacher.name}
-                    </option>
-                  ))}
-                </select>
+                {isRestrictedStaff ? (
+                  <div>
+                    <input type="hidden" name="mainTeacherUserId" value={session.userId} />
+                    <div className="flex h-10 items-center rounded-md border border-zinc-200 bg-white px-3 text-sm text-zinc-700">
+                      {mainTeacherOptions[0]?.name ?? session.name}
+                    </div>
+                  </div>
+                ) : (
+                  <select
+                    name="mainTeacherUserId"
+                    defaultValue={actualMainTeacher?.teacherUserId ?? ""}
+                    className="h-10 rounded-md border border-zinc-200 bg-white px-3 text-sm outline-none focus:border-teal-500"
+                  >
+                    <option value="">Chọn giáo viên chính</option>
+                    {mainTeacherOptions.map((teacher) => (
+                      <option key={teacher.id} value={teacher.id}>
+                        {teacher.name}
+                      </option>
+                    ))}
+                  </select>
+                )}
                 <select
                   name="assistantTeacherUserId"
                   defaultValue={actualAssistantTeacher?.teacherUserId ?? ""}
                   className="h-10 rounded-md border border-zinc-200 bg-white px-3 text-sm outline-none focus:border-teal-500"
                 >
                   <option value="">Chọn giáo viên phụ</option>
-                  {teacherOptions.map((teacher) => (
+                  {assistantTeacherOptions.map((teacher) => (
                     <option key={teacher.id} value={teacher.id}>
                       {teacher.name}
                     </option>
@@ -324,7 +367,7 @@ export default async function AttendancePage({
               </div>
             </form>
           ) : null}
-          {canEditSessionNotes ? (
+          {canEditSessionDetails ? (
             <form
               action={saveNotes}
               className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm"
@@ -380,7 +423,7 @@ export default async function AttendancePage({
             </form>
           ) : canManageSession ? (
             <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 shadow-sm">
-              Giáo viên có thể ghi nội dung buổi học trong khoảng trước giờ học 1 giờ đến sau giờ học 1 giờ.
+              Giáo viên có thể cập nhật buổi học trong khoảng trước giờ học 1 giờ đến sau giờ học 1 giờ.
             </div>
           ) : null}
 
@@ -402,7 +445,7 @@ export default async function AttendancePage({
                 <p className="text-sm text-zinc-500">Chưa có file đính kèm.</p>
               ) : null}
             </div>
-            {can(session, "session.manage") ? (
+            {canEditSessionDetails ? (
               <form action={uploadAttachment} className="mt-4 space-y-3">
                 <input
                   name="file"

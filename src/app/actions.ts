@@ -2321,6 +2321,11 @@ export async function createSessionAction(classId: string, formData: FormData) {
 
 export async function deleteSessionAction(classId: string, sessionId: string) {
   const session = await requirePermission("session.manage");
+
+  if (isClassRestrictedStaff(session)) {
+    redirect("/forbidden");
+  }
+
   await ensureClassPermission(session, classId, "session.manage");
   await prisma.classSession.update({
     where: { id: sessionId },
@@ -2346,7 +2351,12 @@ export async function deleteSessionPermanentlyAction(sessionId: string) {
 
   const classSession = await prisma.classSession.findUnique({
     where: { id: sessionId },
-    select: { classId: true },
+    select: {
+      classId: true,
+      sessionDate: true,
+      startTime: true,
+      endTime: true,
+    },
   });
 
   if (!classSession) {
@@ -3115,7 +3125,12 @@ export async function updateSessionTeachersAction(
   });
   const classSession = await prisma.classSession.findUnique({
     where: { id: sessionId },
-    select: { classId: true },
+    select: {
+      classId: true,
+      sessionDate: true,
+      startTime: true,
+      endTime: true,
+    },
   });
 
   if (!classSession) {
@@ -3123,6 +3138,35 @@ export async function updateSessionTeachersAction(
   }
 
   await ensureClassPermission(session, classSession.classId, "session.manage");
+
+  if (
+    isClassRestrictedStaff(session) &&
+    !isWithinSessionNoteWindow(classSession)
+  ) {
+    redirect(`/sessions/${sessionId}/attendance?noteError=time_window`);
+  }
+
+  const effectiveMainTeacherUserId = isClassRestrictedStaff(session)
+    ? session.userId
+    : parsed.mainTeacherUserId;
+  const effectiveAssistantTeacherUserId = parsed.assistantTeacherUserId;
+
+  if (isClassRestrictedStaff(session) && effectiveAssistantTeacherUserId) {
+    const assignedAssistant = await prisma.classTeacher.findFirst({
+      where: {
+        classId: classSession.classId,
+        teacherUserId: effectiveAssistantTeacherUserId,
+        teacherRole: TeacherAssignmentRole.ASSISTANT,
+        status: "ACTIVE",
+      },
+      select: { id: true },
+    });
+
+    if (!assignedAssistant) {
+      redirect(`/sessions/${sessionId}/attendance?teacherError=assistant_scope`);
+    }
+  }
+
   await prisma.sessionTeacher.deleteMany({
     where: {
       sessionId,
@@ -3131,17 +3175,17 @@ export async function updateSessionTeachersAction(
   });
 
   const rows = [
-    parsed.mainTeacherUserId
+    effectiveMainTeacherUserId
       ? {
           sessionId,
-          teacherUserId: parsed.mainTeacherUserId,
+          teacherUserId: effectiveMainTeacherUserId,
           role: SessionTeacherRole.MAIN,
         }
       : null,
-    parsed.assistantTeacherUserId
+    effectiveAssistantTeacherUserId
       ? {
           sessionId,
-          teacherUserId: parsed.assistantTeacherUserId,
+          teacherUserId: effectiveAssistantTeacherUserId,
           role: SessionTeacherRole.ASSISTANT,
         }
       : null,
@@ -3163,7 +3207,10 @@ export async function updateSessionTeachersAction(
     action: "session_teacher.update",
     entityType: "class_session",
     entityId: sessionId,
-    afterData: parsed,
+    afterData: {
+      mainTeacherUserId: effectiveMainTeacherUserId,
+      assistantTeacherUserId: effectiveAssistantTeacherUserId,
+    },
   });
   revalidatePath(`/sessions/${sessionId}/attendance`);
   revalidatePath("/sessions");
@@ -3177,7 +3224,12 @@ export async function uploadSessionAttachmentAction(
   const session = await requirePermission("session.manage");
   const classSession = await prisma.classSession.findUnique({
     where: { id: sessionId },
-    select: { classId: true },
+    select: {
+      classId: true,
+      sessionDate: true,
+      startTime: true,
+      endTime: true,
+    },
   });
 
   if (!classSession) {
@@ -3185,6 +3237,14 @@ export async function uploadSessionAttachmentAction(
   }
 
   await ensureClassPermission(session, classSession.classId, "session.manage");
+
+  if (
+    isClassRestrictedStaff(session) &&
+    !isWithinSessionNoteWindow(classSession)
+  ) {
+    redirect(`/sessions/${sessionId}/attendance?noteError=time_window`);
+  }
+
   const file = formData.get("file");
   const saved = file instanceof File ? await saveUploadedFile(file, "sessions") : null;
 
@@ -3230,6 +3290,13 @@ export async function markAttendanceAction(sessionId: string, formData: FormData
   }
 
   await ensureClassPermission(session, classSession.classId, "attendance.manage");
+
+  if (
+    isClassRestrictedStaff(session) &&
+    !isWithinSessionNoteWindow(classSession)
+  ) {
+    redirect(`/sessions/${sessionId}/attendance?noteError=time_window`);
+  }
 
   for (const enrollment of classSession.courseClass.students) {
     const studentId = enrollment.studentId;

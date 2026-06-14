@@ -18,7 +18,11 @@ import { ConfirmSubmitButton } from "@/components/confirm-submit-button";
 import { Badge } from "@/components/ui/badge";
 import { PageHeader } from "@/components/ui/page-header";
 import { can, requirePermission } from "@/lib/auth";
-import { canAccessClass, getAccessibleStudentIds } from "@/lib/data-scope";
+import {
+  canAccessClass,
+  getAccessibleStudentIds,
+  isClassRestrictedStaff,
+} from "@/lib/data-scope";
 import { formatDate } from "@/lib/format";
 import {
   classStatusLabels,
@@ -62,6 +66,7 @@ export default async function ClassDetailPage({
 
   const canUpdateClass = can(session, "class.update");
   const canEnrollStudent = canUpdateClass || can(session, "class.enroll_student");
+  const canCancelSessions = can(session, "session.manage") && !isClassRestrictedStaff(session);
 
   const courseClass = await prisma.courseClass.findUnique({
     where: { id },
@@ -651,7 +656,7 @@ export default async function ClassDetailPage({
                   {sessionStatusLabels[item.status]} · {item.room?.name ?? "-"}
                 </p>
                   </Link>
-                  {can(session, "session.manage") && item.status !== "CANCELLED" ? (
+                  {canCancelSessions && item.status !== "CANCELLED" ? (
                     <form action={deleteSessionAction.bind(null, id, item.id)}>
                       <ConfirmSubmitButton
                         message="Hủy buổi học này? Điểm danh và nhận xét liên quan vẫn được lưu để tra cứu."
