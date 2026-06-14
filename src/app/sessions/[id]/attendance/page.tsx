@@ -1,5 +1,6 @@
 import {
   createSessionCommentAction,
+  deleteSessionAction,
   markAttendanceAction,
   saveSessionNotesAction,
   updateSessionTeachersAction,
@@ -7,6 +8,7 @@ import {
 } from "@/app/actions";
 import { redirect } from "next/navigation";
 import { AppShell } from "@/components/app-shell";
+import { ConfirmSubmitButton } from "@/components/confirm-submit-button";
 import { Badge } from "@/components/ui/badge";
 import { PageHeader } from "@/components/ui/page-header";
 import { can, requirePermission } from "@/lib/auth";
@@ -25,6 +27,7 @@ type AttendancePageProps = {
     commented?: string;
     teachersUpdated?: string;
     noteError?: string;
+    notesSaved?: string;
   }>;
 };
 
@@ -124,12 +127,24 @@ export default async function AttendancePage({
         title={`${classSession.courseClass.name} · ${formatDate(classSession.sessionDate)}`}
         description={`${classSession.startTime} - ${classSession.endTime} · ${classSession.room?.name ?? "Chưa chọn phòng"}`}
         action={
-          <a
-            href="/sessions"
-            className="inline-flex h-10 items-center rounded-md border border-zinc-200 bg-white px-4 text-sm font-medium hover:bg-zinc-50"
-          >
-            Quay lại
-          </a>
+          <div className="flex flex-wrap gap-2">
+            {canManageSession && classSession.status !== "CANCELLED" ? (
+              <form action={deleteSessionAction.bind(null, classSession.classId, id)}>
+                <ConfirmSubmitButton
+                  message="Hủy buổi học này? Điểm danh, nhận xét và tài liệu liên quan vẫn được giữ để tra cứu."
+                  className="inline-flex h-10 items-center rounded-md border border-red-200 bg-white px-4 text-sm font-medium text-red-700 hover:bg-red-50"
+                >
+                  Hủy buổi học
+                </ConfirmSubmitButton>
+              </form>
+            ) : null}
+            <a
+              href="/sessions"
+              className="inline-flex h-10 items-center rounded-md border border-zinc-200 bg-white px-4 text-sm font-medium hover:bg-zinc-50"
+            >
+              Quay lại
+            </a>
+          </div>
         }
       />
 
@@ -147,6 +162,12 @@ export default async function AttendancePage({
       {qs?.teachersUpdated ? (
         <div className="rounded-md border border-teal-200 bg-teal-50 px-3 py-2 text-sm text-teal-800">
           Đã cập nhật giáo viên thực tế tham gia.
+        </div>
+      ) : null}
+
+      {qs?.notesSaved ? (
+        <div className="rounded-md border border-teal-200 bg-teal-50 px-3 py-2 text-sm text-teal-800">
+          Đã lưu nội dung buổi học.
         </div>
       ) : null}
 

@@ -212,7 +212,9 @@ export function hasGlobalPermission(
   session: AuthSession | null,
   permission: PermissionCode,
 ) {
-  return Boolean(session?.permissions.includes(permission));
+  return Boolean(
+    session?.roles.includes("admin") || session?.permissions.includes(permission),
+  );
 }
 
 export function can(session: AuthSession | null, permission: PermissionCode) {
@@ -239,12 +241,16 @@ export function canInScope(
   scopeType: PermissionScope,
   scopeId: string | null | undefined,
 ) {
-  if (!session || !scopeId) {
+  if (!session) {
     return false;
   }
 
   if (hasGlobalPermission(session, permission)) {
     return true;
+  }
+
+  if (!scopeId) {
+    return false;
   }
 
   const scoped = session.scopedPermissions.filter(

@@ -3068,6 +3068,7 @@ export async function saveSessionNotesAction(sessionId: string, formData: FormDa
   });
   revalidatePath(`/sessions/${sessionId}/attendance`);
   revalidatePath("/sessions");
+  redirect(`/sessions/${sessionId}/attendance?notesSaved=1`);
 }
 
 export async function updateSessionTeachersAction(
