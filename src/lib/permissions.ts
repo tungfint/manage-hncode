@@ -62,6 +62,9 @@ export const ROLE_PERMISSIONS: Record<RoleCode, PermissionCode[]> = {
   admin: [...ALL_PERMISSION_CODES],
   teacher_main: [
     "student.view",
+    "student.create",
+    "student.update",
+    "student.delete",
     "parent.view",
     "class.view",
     "schedule.view",
