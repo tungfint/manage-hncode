@@ -497,6 +497,7 @@ export async function createStudentAction(formData: FormData) {
   const student = await prisma.student.create({
     data: {
       userId: studentUserId,
+      createdByUserId: session.userId,
       fullName: parsed.fullName,
       dateOfBirth: parsed.dateOfBirth,
       gender: parsed.gender,
@@ -1059,6 +1060,7 @@ export async function confirmImportStudentsAction(token: string) {
       const student = await prisma.student.create({
         data: {
           userId: studentUserId,
+          createdByUserId: session.userId,
           fullName: row.fullName,
           dateOfBirth: parseImportDate(row.dateOfBirth),
           gender: row.gender,
@@ -1298,6 +1300,7 @@ export async function importStudentsDirectAction(formData: FormData) {
       data: {
         ...data,
         userId: studentUserId,
+        createdByUserId: session.userId,
       },
     });
 
@@ -1829,14 +1832,14 @@ export async function deleteRoomAction(roomId: string, formData: FormData) {
 }
 
 export async function enrollStudentAction(classId: string, formData: FormData) {
-  const session = await requirePermission("class.update");
+  const session = await requirePermission("class.enroll_student");
   const studentId = String(formData.get("studentId") ?? "");
 
   if (!studentId) {
     redirect(`/classes/${classId}?error=student`);
   }
 
-  await ensureClassPermission(session, classId, "class.update");
+  await ensureClassPermission(session, classId, "class.enroll_student");
   await ensureStudentPermission(session, studentId, "student.view");
 
   await prisma.classStudent.upsert({

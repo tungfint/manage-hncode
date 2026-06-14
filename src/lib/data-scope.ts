@@ -106,6 +106,14 @@ export async function getAccessibleStudentIds(
       });
       enrollments.forEach((item) => ids.add(item.studentId));
     }
+
+    if (hasGlobalPermission(session, permission)) {
+      const createdStudents = await prisma.student.findMany({
+        where: { createdByUserId: session.userId },
+        select: { id: true },
+      });
+      createdStudents.forEach((student) => ids.add(student.id));
+    }
   }
 
   if (classScopeIds.length) {

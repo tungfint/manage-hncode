@@ -18,7 +18,7 @@ import { ConfirmSubmitButton } from "@/components/confirm-submit-button";
 import { Badge } from "@/components/ui/badge";
 import { PageHeader } from "@/components/ui/page-header";
 import { can, requirePermission } from "@/lib/auth";
-import { canAccessClass } from "@/lib/data-scope";
+import { canAccessClass, getAccessibleStudentIds } from "@/lib/data-scope";
 import { formatDate } from "@/lib/format";
 import {
   classStatusLabels,
@@ -59,6 +59,9 @@ export default async function ClassDetailPage({
   if (!(await canAccessClass(session, id, "class.view"))) {
     redirect("/forbidden");
   }
+
+  const canUpdateClass = can(session, "class.update");
+  const canEnrollStudent = canUpdateClass || can(session, "class.enroll_student");
 
   const courseClass = await prisma.courseClass.findUnique({
     where: { id },
@@ -121,9 +124,14 @@ export default async function ClassDetailPage({
       .map((item, index) => [item.studentId, index + 1]),
   );
 
+  const accessibleStudentIds = canEnrollStudent
+    ? await getAccessibleStudentIds(session, "student.view")
+    : [];
+
   const [students, teachers, rooms] = await Promise.all([
     prisma.student.findMany({
       where: {
+        ...(accessibleStudentIds ? { id: { in: accessibleStudentIds } } : {}),
         status: "STUDYING",
         enrollments: {
           none: {
@@ -182,7 +190,7 @@ export default async function ClassDetailPage({
         description={`${courseClass.classCode} · ${courseClass.subject ?? "Môn học"} · ${courseClass.level ?? "Cấp độ"} · ${courseClass.branch?.name ?? "Chưa chọn cơ sở"}`}
         action={
           <div className="flex gap-2">
-            {can(session, "class.update") ? (
+            {canUpdateClass ? (
               <Link
                 href={`/classes/${id}/edit`}
                 className="inline-flex h-10 items-center rounded-md bg-[#17215c] px-4 text-sm font-medium text-white hover:bg-[#25308d]"
@@ -245,7 +253,7 @@ export default async function ClassDetailPage({
         </div>
       ) : null}
 
-      {query?.emailPreview && previewEmails ? (
+      {query?.emailPreview && previewEmails && canUpdateClass ? (
         <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950 shadow-sm">
           <p className="font-semibold">
             Kiểm tra email: tìm thấy {query.emailFound ?? 0} học viên có thể thêm,{" "}
@@ -309,7 +317,7 @@ export default async function ClassDetailPage({
                   <Badge tone={item.status === "ACTIVE" ? "success" : "warning"}>
                     {enrollmentStatusLabels[item.status]}
                   </Badge>
-                  {can(session, "class.update") && item.status === "ACTIVE" ? (
+                  {canUpdateClass && item.status === "ACTIVE" ? (
                     <form
                       action={removeStudentFromClassAction.bind(
                         null,
@@ -331,7 +339,7 @@ export default async function ClassDetailPage({
           </div>
         </div>
 
-        {can(session, "class.update") ? (
+        {canEnrollStudent ? (
           <div className="space-y-4">
             <form
               action={enrollAction}
@@ -350,15 +358,17 @@ export default async function ClassDetailPage({
               </select>
               <button
                 type="submit"
-                className="h-10 w-full rounded-md bg-zinc-950 text-sm font-medium text-white hover:bg-zinc-800"
+                disabled={!students.length}
+                className="h-10 w-full rounded-md bg-zinc-950 text-sm font-medium text-white hover:bg-zinc-800 disabled:cursor-not-allowed disabled:bg-zinc-300"
               >
                 Thêm vào lớp
               </button>
             </form>
-            <form
-              action={previewEnrollByEmailAction}
-              className="rounded-lg border border-yellow-200 bg-[#fff8d7] p-4 shadow-sm"
-            >
+            {canUpdateClass ? (
+              <form
+                action={previewEnrollByEmailAction}
+                className="rounded-lg border border-yellow-200 bg-[#fff8d7] p-4 shadow-sm"
+              >
               <h2 className="mb-2 font-semibold">Thêm bằng danh sách email</h2>
               <p className="mb-3 text-sm text-slate-600">
                 Dán email học viên, cách nhau bằng dòng mới, dấu phẩy hoặc khoảng trắng.
@@ -374,7 +384,8 @@ export default async function ClassDetailPage({
               >
                 Kiểm tra và thêm email hợp lệ
               </button>
-            </form>
+              </form>
+            ) : null}
           </div>
         ) : null}
       </section>

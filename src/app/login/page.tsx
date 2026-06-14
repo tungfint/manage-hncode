@@ -88,7 +88,7 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
                   autoComplete="username"
                   required
                   className="mt-1 h-11 w-full rounded-md border border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-[#08a7dc] focus:ring-2 focus:ring-[#08a7dc]/12"
-                  placeholder="admin@trungtam.test"
+                  placeholder="email@hncode.vn"
                 />
               </label>
 
@@ -100,7 +100,7 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
                   autoComplete="current-password"
                   required
                   className="mt-1 h-11 w-full rounded-md border border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-[#08a7dc] focus:ring-2 focus:ring-[#08a7dc]/12"
-                  placeholder="Password123!"
+                  placeholder="Nhập mật khẩu"
                 />
               </label>
 
@@ -129,10 +129,6 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
               Đăng nhập bằng Google
             </a>
 
-            <div className="mt-5 rounded-md border border-slate-200 bg-slate-50 p-3 text-xs leading-5 text-slate-600">
-              Tài khoản mẫu: <strong>admin@trungtam.test</strong> /{" "}
-              <strong>Password123!</strong>
-            </div>
           </div>
         </section>
       </main>

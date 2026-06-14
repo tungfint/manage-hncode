@@ -203,6 +203,7 @@ model User {
   permissions               UserPermission[]
   staffProfile              StaffProfile?
   studentProfile            Student?            @relation("StudentUser")
+  createdStudents           Student[]           @relation("StudentCreator")
   parentProfile             Parent?             @relation("ParentUser")
   classAssignments          ClassTeacher[]      @relation("ClassTeacherUser")
   sessionAssignments        SessionTeacher[]    @relation("SessionTeacherUser")
@@ -316,24 +317,26 @@ model StaffProfile {
 }
 
 model Student {
-  id            String        @id @default(cuid())
-  userId        String?       @unique
-  fullName      String
-  dateOfBirth   DateTime?
-  gender        Gender?
-  phone         String?
-  email         String?       @unique
-  school        String?
-  schoolGrade   String?
-  clubClass     String?
-  entryLevel    String?
-  hncodeAccount String?       @unique
-  status        StudentStatus @default(STUDYING)
-  note          String?
-  createdAt     DateTime      @default(now())
-  updatedAt     DateTime      @updatedAt
+  id              String        @id @default(cuid())
+  userId          String?       @unique
+  createdByUserId String?
+  fullName        String
+  dateOfBirth     DateTime?
+  gender          Gender?
+  phone           String?
+  email           String?       @unique
+  school          String?
+  schoolGrade     String?
+  clubClass       String?
+  entryLevel      String?
+  hncodeAccount   String?       @unique
+  status          StudentStatus @default(STUDYING)
+  note            String?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
 
   user           User?            @relation("StudentUser", fields: [userId], references: [id], onDelete: SetNull)
+  createdBy      User?            @relation("StudentCreator", fields: [createdByUserId], references: [id], onDelete: SetNull)
   parents        StudentParent[]
   enrollments    ClassStudent[]
   attendances    Attendance[]
@@ -343,6 +346,7 @@ model Student {
 
   @@index([status])
   @@index([clubClass])
+  @@index([createdByUserId])
   @@map("students")
 }
 
