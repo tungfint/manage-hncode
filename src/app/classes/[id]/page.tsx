@@ -103,6 +103,7 @@ export default async function ClassDetailPage({
         orderBy: { assignedAt: "desc" },
       },
       schedules: {
+        where: { status: "ACTIVE" },
         include: { room: { select: { id: true, name: true } } },
         orderBy: [{ dayOfWeek: "asc" }, { startTime: "asc" }],
       },
@@ -552,6 +553,14 @@ export default async function ClassDetailPage({
                         defaultValue={item.endDate?.toISOString().slice(0, 10) ?? ""}
                         className="h-10 rounded-md border border-zinc-200 bg-white px-3 text-sm outline-none focus:border-teal-500"
                       />
+                      <select
+                        name="status"
+                        defaultValue={item.status}
+                        className="h-10 rounded-md border border-zinc-200 bg-white px-3 text-sm outline-none focus:border-teal-500 sm:col-span-2"
+                      >
+                        <option value="ACTIVE">Đang áp dụng</option>
+                        <option value="INACTIVE">Ngừng áp dụng</option>
+                      </select>
                       <select
                         name="futureSessionsMode"
                         defaultValue="KEEP"

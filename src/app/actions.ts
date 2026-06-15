@@ -2127,6 +2127,15 @@ export async function updateScheduleAction(
 ) {
   const session = await requirePermission("schedule.manage");
   await ensureClassPermission(session, classId, "schedule.manage");
+  const existingSchedule = await prisma.classSchedule.findUnique({
+    where: { id: scheduleId },
+    select: { classId: true },
+  });
+
+  if (!existingSchedule || existingSchedule.classId !== classId) {
+    redirect("/forbidden");
+  }
+
   const schema = z.object({
     dayOfWeek: z.coerce.number().int().min(1).max(7),
     startTime: z.string().trim().min(4),
@@ -2134,7 +2143,7 @@ export async function updateScheduleAction(
     roomId: optionalString,
     startDate: dateField,
     endDate: dateField,
-    status: z.enum(ScheduleStatus),
+    status: z.enum(ScheduleStatus).default(ScheduleStatus.ACTIVE),
     futureSessionsMode: z
       .enum(["KEEP", "UPDATE_TIME_ROOM", "CANCEL"])
       .default("KEEP"),
@@ -2146,7 +2155,7 @@ export async function updateScheduleAction(
     roomId: formData.get("roomId"),
     startDate: formData.get("startDate"),
     endDate: formData.get("endDate"),
-    status: formData.get("status"),
+    status: formData.get("status") || ScheduleStatus.ACTIVE,
     futureSessionsMode: formData.get("futureSessionsMode") || "KEEP",
   });
 
@@ -2203,6 +2212,15 @@ export async function updateScheduleAction(
 export async function deleteScheduleAction(classId: string, scheduleId: string) {
   const session = await requirePermission("schedule.manage");
   await ensureClassPermission(session, classId, "schedule.manage");
+  const existingSchedule = await prisma.classSchedule.findUnique({
+    where: { id: scheduleId },
+    select: { classId: true },
+  });
+
+  if (!existingSchedule || existingSchedule.classId !== classId) {
+    redirect("/forbidden");
+  }
+
   await prisma.classSchedule.update({
     where: { id: scheduleId },
     data: { status: ScheduleStatus.INACTIVE, endDate: new Date() },
