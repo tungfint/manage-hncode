@@ -1,14 +1,17 @@
 import {
+  closeAutoAttendanceRoundAction,
   createSessionCommentAction,
   deleteSessionAction,
   deleteSessionPermanentlyAction,
   markAttendanceAction,
   saveSessionNotesAction,
+  startAutoAttendanceRoundAction,
   updateSessionTeachersAction,
   uploadSessionAttachmentAction,
 } from "@/app/actions";
 import { redirect } from "next/navigation";
 import { AppShell } from "@/components/app-shell";
+import { AutoRefresh } from "@/components/auto-refresh";
 import { ConfirmSubmitButton } from "@/components/confirm-submit-button";
 import { Badge } from "@/components/ui/badge";
 import { PageHeader } from "@/components/ui/page-header";
@@ -30,6 +33,9 @@ type AttendancePageProps = {
     noteError?: string;
     notesSaved?: string;
     teacherError?: string;
+    autoStarted?: string;
+    autoClosed?: string;
+    autoError?: string;
   }>;
 };
 
@@ -88,6 +94,17 @@ export default async function AttendancePage({
       attachments: {
         orderBy: { uploadedAt: "desc" },
       },
+      autoRounds: {
+        orderBy: { startedAt: "desc" },
+        take: 8,
+        include: {
+          attempts: {
+            where: { accepted: true },
+            include: { student: { select: { id: true, fullName: true } } },
+            orderBy: { submittedAt: "asc" },
+          },
+        },
+      },
     },
   });
 
@@ -107,6 +124,11 @@ export default async function AttendancePage({
     canManageSession && (!isRestrictedStaff || isInSessionEditWindow);
   const canManageAttendance =
     can(session, "attendance.manage") && (!isRestrictedStaff || isInSessionEditWindow);
+  const isTeacher =
+    session.roles.includes("teacher_main") ||
+    session.roles.includes("teacher_assistant");
+  const canManageAutoAttendance =
+    canManageAttendance || (isTeacher && isInSessionEditWindow);
   const canCancelSession = canManageSession && !isRestrictedStaff;
   const allTeacherOptions = (
     await prisma.user.findMany({
@@ -150,6 +172,31 @@ export default async function AttendancePage({
   const markAttendance = markAttendanceAction.bind(null, id);
   const createComment = createSessionCommentAction.bind(null, id);
   const uploadAttachment = uploadSessionAttachmentAction.bind(null, id);
+  const startAutoAttendance = startAutoAttendanceRoundAction.bind(null, id);
+  const activeAutoRound = classSession.autoRounds.find(
+    (round) => round.status === "ACTIVE",
+  );
+  const closeAutoAttendance = activeAutoRound
+    ? closeAutoAttendanceRoundAction.bind(null, activeAutoRound.id)
+    : null;
+  const autoAcceptedAttempts = classSession.autoRounds
+    .flatMap((round) =>
+      round.attempts.map((attempt) => ({
+        ...attempt,
+        roundCode: round.code,
+      })),
+    )
+    .sort((a, b) => a.submittedAt.getTime() - b.submittedAt.getTime());
+  const alreadyPresentStudentIds = new Set(
+    classSession.attendances
+      .filter((attendance) =>
+        ["PRESENT", "LATE", "LEFT_EARLY", "MAKEUP"].includes(attendance.status),
+      )
+      .map((attendance) => attendance.studentId),
+  );
+  const autoRemainingCount = classSession.courseClass.students.filter(
+    (enrollment) => !alreadyPresentStudentIds.has(enrollment.studentId),
+  ).length;
 
   return (
     <AppShell session={session}>
@@ -223,7 +270,135 @@ export default async function AttendancePage({
         </div>
       ) : null}
 
+      {qs?.autoStarted ? (
+        <div className="rounded-md border border-teal-200 bg-teal-50 px-3 py-2 text-sm text-teal-800">
+          Đã bật điểm danh tự động.
+        </div>
+      ) : null}
+      {qs?.autoClosed ? (
+        <div className="rounded-md border border-teal-200 bg-teal-50 px-3 py-2 text-sm text-teal-800">
+          Đã đóng vòng điểm danh tự động.
+        </div>
+      ) : null}
+      {qs?.autoError === "time_window" ? (
+        <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+          Giáo viên chỉ bật điểm danh tự động trong khoảng trước giờ học 1 giờ đến sau giờ học 1 giờ.
+        </div>
+      ) : null}
+      {qs?.autoError === "all_done" ? (
+        <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+          Tất cả học viên trong lớp đã được ghi nhận có mặt.
+        </div>
+      ) : null}
+
+      {activeAutoRound ? <AutoRefresh intervalMs={2500} /> : null}
+
       <section className="space-y-5">
+        <div className="rounded-lg border border-cyan-200 bg-[linear-gradient(135deg,#ecfeff_0%,#ffffff_55%,#fff8d7_100%)] p-4 shadow-sm">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+              <h2 className="font-semibold text-[#17215c]">Điểm danh tự động</h2>
+              <p className="mt-1 text-sm text-slate-600">
+                Học viên nhập mã thật nhanh. {activeAutoRound ? "Vòng đang chạy." : "Tạo vòng mới để bắt đầu."}
+              </p>
+              <p className="mt-2 text-sm text-slate-500">
+                Link học viên:{" "}
+                <a
+                  href={`/sessions/${id}/check-in`}
+                  className="font-medium text-[#087eac] hover:text-[#17215c]"
+                >
+                  /sessions/{id}/check-in
+                </a>
+              </p>
+            </div>
+            <div className="rounded-lg border border-white/80 bg-white px-4 py-3 text-center shadow-sm">
+              <p className="text-xs font-medium uppercase text-slate-500">Còn cần điểm danh</p>
+              <p className="mt-1 text-2xl font-bold text-[#17215c]">{autoRemainingCount}</p>
+            </div>
+          </div>
+
+          {activeAutoRound ? (
+            <div className="mt-4 grid gap-4 lg:grid-cols-[0.8fr_1.2fr]">
+              <div className="rounded-lg border border-cyan-200 bg-white p-4">
+                <p className="text-sm text-slate-500">Mã hiện tại</p>
+                <p className="mt-2 select-all rounded-md bg-[#17215c] px-4 py-3 text-center text-4xl font-black tracking-[0.24em] text-white">
+                  {activeAutoRound.code}
+                </p>
+                <p className="mt-3 text-sm text-slate-600">
+                  Mục tiêu: {activeAutoRound.attempts.length}/{activeAutoRound.targetCount} học viên.
+                </p>
+                {canManageAutoAttendance && closeAutoAttendance ? (
+                  <form action={closeAutoAttendance} className="mt-3">
+                    <button
+                      type="submit"
+                      className="h-10 w-full rounded-md border border-red-200 bg-white text-sm font-medium text-red-700 hover:bg-red-50"
+                    >
+                      Đóng vòng này
+                    </button>
+                  </form>
+                ) : null}
+              </div>
+              <div className="rounded-lg border border-slate-200 bg-white p-4">
+                <h3 className="font-semibold">Bảng xếp hạng</h3>
+                <div className="mt-3 space-y-2">
+                  {autoAcceptedAttempts.map((attempt, index) => (
+                    <div
+                      key={attempt.id}
+                      className="flex items-center justify-between rounded-md border border-slate-100 px-3 py-2 text-sm"
+                    >
+                      <span className="font-medium">
+                        #{index + 1} {attempt.student.fullName}
+                      </span>
+                      <span className="text-xs text-slate-500">
+                        {formatDateTime(attempt.submittedAt)}
+                      </span>
+                    </div>
+                  ))}
+                  {!autoAcceptedAttempts.length ? (
+                    <p className="rounded-md border border-dashed border-slate-200 px-3 py-6 text-center text-sm text-slate-500">
+                      Chưa có học viên nhập đúng mã.
+                    </p>
+                  ) : null}
+                </div>
+              </div>
+            </div>
+          ) : canManageAutoAttendance ? (
+            <form action={startAutoAttendance} className="mt-4 grid gap-3 rounded-lg border border-slate-200 bg-white p-4 lg:grid-cols-[1fr_150px_1fr_150px]">
+              <select
+                name="mode"
+                defaultValue="ALL"
+                className="h-10 rounded-md border border-slate-200 px-3 text-sm outline-none focus:border-[#08a7dc]"
+              >
+                <option value="ALL">Điểm danh toàn bộ</option>
+                <option value="LIMIT">Điểm danh x người</option>
+              </select>
+              <input
+                name="targetCount"
+                type="number"
+                min={1}
+                max={200}
+                placeholder="x"
+                className="h-10 rounded-md border border-slate-200 px-3 text-sm outline-none focus:border-[#08a7dc]"
+              />
+              <input
+                name="code"
+                placeholder="Mã tự chọn hoặc bỏ trống"
+                className="h-10 rounded-md border border-slate-200 px-3 text-sm uppercase outline-none focus:border-[#08a7dc]"
+              />
+              <button
+                type="submit"
+                className="h-10 rounded-md bg-[#17215c] px-4 text-sm font-medium text-white hover:bg-[#25308d]"
+              >
+                Bắt đầu
+              </button>
+            </form>
+          ) : (
+            <div className="mt-4 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+              Giáo viên chính/phụ chỉ bật điểm danh tự động trong giờ học.
+            </div>
+          )}
+        </div>
+
         <form
           action={markAttendance}
           className="rounded-lg border border-zinc-200 bg-white shadow-sm"

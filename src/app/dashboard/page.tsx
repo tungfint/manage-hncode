@@ -41,6 +41,7 @@ export default async function DashboardPage() {
   const isTeacher =
     session.roles.includes("teacher_main") ||
     session.roles.includes("teacher_assistant");
+  const isStudentAccount = session.roles.includes("student");
   const isAccountant = session.roles.includes("accountant");
 
   const classScope = isTeacher
@@ -415,9 +416,13 @@ export default async function DashboardPage() {
                     <td className="px-4 py-4">
                       <a
                         className="font-medium text-[#08a7dc] hover:text-[#17215c]"
-                        href={`/sessions/${item.id}/attendance`}
+                        href={
+                          isStudentAccount
+                            ? `/sessions/${item.id}/check-in`
+                            : `/sessions/${item.id}/attendance`
+                        }
                       >
-                        Mở buổi học
+                        {isStudentAccount ? "Điểm danh" : "Mở buổi học"}
                       </a>
                     </td>
                   </tr>
@@ -479,7 +484,11 @@ export default async function DashboardPage() {
               {upcomingSessions.map((item) => (
                 <a
                   key={item.id}
-                  href={`/sessions/${item.id}/attendance`}
+                  href={
+                    isStudentAccount
+                      ? `/sessions/${item.id}/check-in`
+                      : `/sessions/${item.id}/attendance`
+                  }
                   className="block rounded-md border border-slate-100 px-3 py-2 hover:bg-slate-50"
                 >
                   <p className="truncate text-sm font-medium text-slate-900">

@@ -69,6 +69,7 @@ export default async function SessionsPage({ searchParams }: SessionsPageProps) 
     prisma.classSession.count({ where }),
   ]);
   const todayKey = dateKey(new Date());
+  const isStudentAccount = session.roles.includes("student");
 
   return (
     <AppShell session={session}>
@@ -151,10 +152,14 @@ export default async function SessionsPage({ searchParams }: SessionsPageProps) 
                 </td>
                 <td className="px-4 py-4">
                   <a
-                    href={`/sessions/${item.id}/attendance`}
+                    href={
+                      isStudentAccount
+                        ? `/sessions/${item.id}/check-in`
+                        : `/sessions/${item.id}/attendance`
+                    }
                     className="font-medium text-teal-700 hover:text-teal-800"
                   >
-                    Mở
+                    {isStudentAccount ? "Điểm danh" : "Mở"}
                   </a>
                 </td>
               </tr>

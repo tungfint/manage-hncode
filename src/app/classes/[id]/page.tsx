@@ -67,6 +67,7 @@ export default async function ClassDetailPage({
   const canUpdateClass = can(session, "class.update");
   const canEnrollStudent = canUpdateClass || can(session, "class.enroll_student");
   const canCancelSessions = can(session, "session.manage") && !isClassRestrictedStaff(session);
+  const isStudentAccount = session.roles.includes("student");
 
   const courseClass = await prisma.courseClass.findUnique({
     where: { id },
@@ -657,7 +658,14 @@ export default async function ClassDetailPage({
                 className="rounded-lg border border-zinc-200 p-3 hover:bg-zinc-50"
               >
                 <div className="flex items-start justify-between gap-3">
-                  <Link href={`/sessions/${item.id}/attendance`} className="block">
+                  <Link
+                    href={
+                      isStudentAccount
+                        ? `/sessions/${item.id}/check-in`
+                        : `/sessions/${item.id}/attendance`
+                    }
+                    className="block"
+                  >
                 <p className="font-medium">
                   {formatDate(item.sessionDate)} · {item.startTime} - {item.endTime}
                 </p>

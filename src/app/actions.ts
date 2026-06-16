@@ -10,6 +10,7 @@ import nodemailer from "nodemailer";
 import { z } from "zod";
 import {
   AttendanceStatus,
+  AttendanceAutoRoundStatus,
   ClassStatus,
   CommentType,
   EnrollmentStatus,
@@ -33,8 +34,9 @@ import {
   TuitionCalculationMode,
   TuitionStatus,
   UserStatus,
+  Prisma,
 } from "@/generated/prisma/client";
-import { hashPassword, requirePermission } from "@/lib/auth";
+import { can, getSessionOrRedirect, hashPassword, requirePermission } from "@/lib/auth";
 import {
   canAccessClass,
   canAccessStudent,
@@ -166,6 +168,29 @@ function isWithinSessionNoteWindow(input: {
   const hour = 60 * 60 * 1000;
 
   return now >= start - hour && now <= end + hour;
+}
+
+function normalizeAttendanceCode(
+  value: FormDataEntryValue | string | null | undefined,
+) {
+  return String(value ?? "")
+    .trim()
+    .replace(/\s+/g, "")
+    .toUpperCase();
+}
+
+function generateAttendanceCode() {
+  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  return Array.from({ length: 6 }, () =>
+    alphabet[Math.floor(Math.random() * alphabet.length)],
+  ).join("");
+}
+
+function isTeacherAccount(session: Awaited<ReturnType<typeof getSessionOrRedirect>>) {
+  return (
+    session.roles.includes("teacher_main") ||
+    session.roles.includes("teacher_assistant")
+  );
 }
 
 function dayOfWeekFromDate(date: Date) {
@@ -3356,6 +3381,403 @@ export async function markAttendanceAction(sessionId: string, formData: FormData
   });
   revalidatePath(`/sessions/${sessionId}/attendance`);
   redirect(`/sessions/${sessionId}/attendance?saved=1`);
+}
+
+async function ensureAutoAttendanceManager(
+  session: Awaited<ReturnType<typeof getSessionOrRedirect>>,
+  classSession: {
+    classId: string;
+    sessionDate: Date;
+    startTime: string;
+    endTime: string;
+  },
+  sessionId: string,
+) {
+  if (
+    can(session, "attendance.manage") &&
+    (await canAccessClass(session, classSession.classId, "attendance.manage"))
+  ) {
+    return;
+  }
+
+  if (
+    isTeacherAccount(session) &&
+    (await canAccessClass(session, classSession.classId, "attendance.view"))
+  ) {
+    if (!isWithinSessionNoteWindow(classSession)) {
+      redirect(`/sessions/${sessionId}/attendance?autoError=time_window`);
+    }
+
+    return;
+  }
+
+  redirect("/forbidden");
+}
+
+export async function startAutoAttendanceRoundAction(
+  sessionId: string,
+  formData: FormData,
+) {
+  const session = await getSessionOrRedirect();
+  const schema = z.object({
+    mode: z.enum(["LIMIT", "ALL"]).default("ALL"),
+    targetCount: z.coerce.number().int().min(1).max(200).optional(),
+    code: optionalString,
+  });
+  const parsed = schema.parse({
+    mode: formData.get("mode") || "ALL",
+    targetCount: formData.get("targetCount") || undefined,
+    code: formData.get("code"),
+  });
+  const classSession = await prisma.classSession.findUnique({
+    where: { id: sessionId },
+    select: {
+      classId: true,
+      sessionDate: true,
+      startTime: true,
+      endTime: true,
+      courseClass: {
+        select: {
+          students: {
+            where: { status: EnrollmentStatus.ACTIVE },
+            select: { studentId: true },
+          },
+        },
+      },
+    },
+  });
+
+  if (!classSession) {
+    redirect("/sessions");
+  }
+
+  await ensureAutoAttendanceManager(session, classSession, sessionId);
+
+  const activeStudentIds = classSession.courseClass.students.map(
+    (item) => item.studentId,
+  );
+  const alreadyPresent = await prisma.attendance.findMany({
+    where: {
+      sessionId,
+      studentId: { in: activeStudentIds },
+      status: {
+        in: [
+          AttendanceStatus.PRESENT,
+          AttendanceStatus.LATE,
+          AttendanceStatus.LEFT_EARLY,
+          AttendanceStatus.MAKEUP,
+        ],
+      },
+    },
+    select: { studentId: true },
+  });
+  const alreadyPresentIds = new Set(alreadyPresent.map((item) => item.studentId));
+  const remainingCount = activeStudentIds.filter(
+    (studentId) => !alreadyPresentIds.has(studentId),
+  ).length;
+
+  if (remainingCount <= 0) {
+    redirect(`/sessions/${sessionId}/attendance?autoError=all_done`);
+  }
+
+  const targetCount =
+    parsed.mode === "ALL"
+      ? remainingCount
+      : Math.min(parsed.targetCount ?? remainingCount, remainingCount);
+  const code = normalizeAttendanceCode(parsed.code) || generateAttendanceCode();
+
+  const round = await prisma.$transaction(async (tx) => {
+    await tx.attendanceAutoRound.updateMany({
+      where: {
+        sessionId,
+        status: AttendanceAutoRoundStatus.ACTIVE,
+      },
+      data: {
+        status: AttendanceAutoRoundStatus.CLOSED,
+        endedAt: new Date(),
+      },
+    });
+
+    return tx.attendanceAutoRound.create({
+      data: {
+        sessionId,
+        createdByUserId: session.userId,
+        code,
+        targetCount,
+        status: AttendanceAutoRoundStatus.ACTIVE,
+      },
+    });
+  });
+
+  await audit({
+    userId: session.userId,
+    action: "attendance_auto.start",
+    entityType: "class_session",
+    entityId: sessionId,
+    afterData: { roundId: round.id, targetCount },
+  });
+  revalidatePath(`/sessions/${sessionId}/attendance`);
+  revalidatePath(`/sessions/${sessionId}/check-in`);
+  redirect(`/sessions/${sessionId}/attendance?autoStarted=1`);
+}
+
+export async function closeAutoAttendanceRoundAction(roundId: string) {
+  const session = await getSessionOrRedirect();
+  const round = await prisma.attendanceAutoRound.findUnique({
+    where: { id: roundId },
+    include: {
+      session: {
+        select: {
+          id: true,
+          classId: true,
+          sessionDate: true,
+          startTime: true,
+          endTime: true,
+        },
+      },
+    },
+  });
+
+  if (!round) {
+    redirect("/sessions");
+  }
+
+  await ensureAutoAttendanceManager(session, round.session, round.sessionId);
+  await prisma.attendanceAutoRound.update({
+    where: { id: roundId },
+    data: {
+      status: AttendanceAutoRoundStatus.CLOSED,
+      endedAt: new Date(),
+    },
+  });
+  await audit({
+    userId: session.userId,
+    action: "attendance_auto.close",
+    entityType: "class_session",
+    entityId: round.sessionId,
+    afterData: { roundId },
+  });
+  revalidatePath(`/sessions/${round.sessionId}/attendance`);
+  revalidatePath(`/sessions/${round.sessionId}/check-in`);
+  redirect(`/sessions/${round.sessionId}/attendance?autoClosed=1`);
+}
+
+export async function submitAutoAttendanceCodeAction(
+  sessionId: string,
+  formData: FormData,
+) {
+  const session = await getSessionOrRedirect();
+  const submittedCode = normalizeAttendanceCode(formData.get("code"));
+  const student = await prisma.student.findUnique({
+    where: { userId: session.userId },
+    select: { id: true, fullName: true },
+  });
+
+  if (!student) {
+    redirect("/forbidden");
+  }
+
+  const classSession = await prisma.classSession.findUnique({
+    where: { id: sessionId },
+    select: {
+      id: true,
+      classId: true,
+      autoRounds: {
+        where: { status: AttendanceAutoRoundStatus.ACTIVE },
+        orderBy: { startedAt: "desc" },
+        take: 1,
+      },
+      courseClass: {
+        select: {
+          students: {
+            where: { studentId: student.id, status: EnrollmentStatus.ACTIVE },
+            select: { id: true },
+          },
+        },
+      },
+    },
+  });
+
+  if (!classSession || !classSession.courseClass.students.length) {
+    redirect("/forbidden");
+  }
+
+  const round = classSession.autoRounds[0];
+
+  if (!round) {
+    redirect(`/sessions/${sessionId}/check-in?autoError=no_round`);
+  }
+
+  const alreadyPresent = await prisma.attendance.findFirst({
+    where: {
+      sessionId,
+      studentId: student.id,
+      status: {
+        in: [
+          AttendanceStatus.PRESENT,
+          AttendanceStatus.LATE,
+          AttendanceStatus.LEFT_EARLY,
+          AttendanceStatus.MAKEUP,
+        ],
+      },
+    },
+    select: { id: true },
+  });
+
+  if (alreadyPresent) {
+    redirect(`/sessions/${sessionId}/check-in?autoStatus=already`);
+  }
+
+  if (!submittedCode || submittedCode !== round.code) {
+    await prisma.attendanceAutoAttempt.create({
+      data: {
+        roundId: round.id,
+        studentId: student.id,
+        userId: session.userId,
+        submittedCode,
+        isCorrect: false,
+        accepted: false,
+      },
+    });
+    revalidatePath(`/sessions/${sessionId}/check-in`);
+    redirect(`/sessions/${sessionId}/check-in?autoError=code`);
+  }
+
+  let result: "accepted" | "already" | "full" = "accepted";
+
+  try {
+    result = await prisma.$transaction(
+      async (tx) => {
+        const currentRound = await tx.attendanceAutoRound.findUnique({
+          where: { id: round.id },
+          select: {
+            id: true,
+            code: true,
+            targetCount: true,
+            status: true,
+            createdByUserId: true,
+          },
+        });
+
+        if (
+          !currentRound ||
+          currentRound.status !== AttendanceAutoRoundStatus.ACTIVE
+        ) {
+          return "full";
+        }
+
+        const existingAttendance = await tx.attendance.findFirst({
+          where: {
+            sessionId,
+            studentId: student.id,
+            status: {
+              in: [
+                AttendanceStatus.PRESENT,
+                AttendanceStatus.LATE,
+                AttendanceStatus.LEFT_EARLY,
+                AttendanceStatus.MAKEUP,
+              ],
+            },
+          },
+          select: { id: true },
+        });
+
+        if (existingAttendance) {
+          return "already";
+        }
+
+        const existingAcceptedAttempt = await tx.attendanceAutoAttempt.findFirst({
+          where: {
+            roundId: round.id,
+            studentId: student.id,
+            accepted: true,
+          },
+          select: { id: true },
+        });
+
+        if (existingAcceptedAttempt) {
+          return "already";
+        }
+
+        const acceptedCount = await tx.attendanceAutoAttempt.count({
+          where: { roundId: round.id, accepted: true },
+        });
+
+        if (acceptedCount >= currentRound.targetCount) {
+          await tx.attendanceAutoRound.update({
+            where: { id: round.id },
+            data: {
+              status: AttendanceAutoRoundStatus.CLOSED,
+              endedAt: new Date(),
+            },
+          });
+          return "full";
+        }
+
+        await tx.attendanceAutoAttempt.create({
+          data: {
+            roundId: round.id,
+            studentId: student.id,
+            userId: session.userId,
+            submittedCode,
+            isCorrect: true,
+            accepted: true,
+          },
+        });
+        await tx.attendance.upsert({
+          where: {
+            sessionId_studentId: {
+              sessionId,
+              studentId: student.id,
+            },
+          },
+          update: {
+            status: AttendanceStatus.PRESENT,
+            note: "Điểm danh tự động",
+            markedByUserId: currentRound.createdByUserId,
+            markedAt: new Date(),
+          },
+          create: {
+            sessionId,
+            studentId: student.id,
+            status: AttendanceStatus.PRESENT,
+            note: "Điểm danh tự động",
+            markedByUserId: currentRound.createdByUserId,
+          },
+        });
+
+        if (acceptedCount + 1 >= currentRound.targetCount) {
+          await tx.attendanceAutoRound.update({
+            where: { id: round.id },
+            data: {
+              status: AttendanceAutoRoundStatus.CLOSED,
+              endedAt: new Date(),
+            },
+          });
+        }
+
+        return "accepted";
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+    );
+  } catch (error) {
+    if ((error as { code?: string }).code === "P2034") {
+      redirect(`/sessions/${sessionId}/check-in?autoError=busy`);
+    }
+
+    throw error;
+  }
+
+  await audit({
+    userId: session.userId,
+    action: "attendance_auto.submit",
+    entityType: "class_session",
+    entityId: sessionId,
+    afterData: { studentId: student.id, result },
+  });
+  revalidatePath(`/sessions/${sessionId}/attendance`);
+  revalidatePath(`/sessions/${sessionId}/check-in`);
+  redirect(`/sessions/${sessionId}/check-in?autoStatus=${result}`);
 }
 
 export async function createSessionCommentAction(

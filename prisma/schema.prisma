@@ -113,6 +113,11 @@ enum AttendanceStatus {
   RESERVED
 }
 
+enum AttendanceAutoRoundStatus {
+  ACTIVE
+  CLOSED
+}
+
 enum StaffAttendanceStatus {
   PRESENT
   EXCUSED
@@ -202,29 +207,31 @@ model User {
   roles                     UserRole[]
   permissions               UserPermission[]
   staffProfile              StaffProfile?
-  studentProfile            Student?            @relation("StudentUser")
-  createdStudents           Student[]           @relation("StudentCreator")
-  parentProfile             Parent?             @relation("ParentUser")
-  classAssignments          ClassTeacher[]      @relation("ClassTeacherUser")
-  sessionAssignments        SessionTeacher[]    @relation("SessionTeacherUser")
-  markedAttendances         Attendance[]        @relation("AttendanceMarker")
-  createdComments           StudentComment[]    @relation("CommentCreator")
-  createdExams              Exam[]              @relation("ExamCreator")
-  createdScores             Score[]             @relation("ScoreCreator")
-  updatedScores             Score[]             @relation("ScoreUpdater")
-  createdTuitionCharges     TuitionCharge[]     @relation("TuitionChargeCreator")
-  receivedPayments          Payment[]           @relation("PaymentReceiver")
-  salaryRules               SalaryRule[]        @relation("SalaryRuleStaff")
-  createdPayrolls           Payroll[]           @relation("PayrollCreator")
-  approvedPayrolls          Payroll[]           @relation("PayrollApprover")
-  paidPayrolls              Payroll[]           @relation("PayrollPayer")
-  payrollAdjustmentsCreated PayrollAdjustment[] @relation("PayrollAdjustmentCreator")
-  payrollAdjustmentsStaff   PayrollAdjustment[] @relation("PayrollAdjustmentStaff")
-  payrollItems              PayrollItem[]       @relation("PayrollItemStaff")
-  staffAttendances          StaffAttendance[]   @relation("StaffAttendanceStaff")
-  confirmedStaffAttendances StaffAttendance[]   @relation("StaffAttendanceConfirmer")
-  notifications             Notification[]      @relation("NotificationUser")
-  auditLogs                 AuditLog[]          @relation("AuditLogUser")
+  studentProfile            Student?                @relation("StudentUser")
+  createdStudents           Student[]               @relation("StudentCreator")
+  parentProfile             Parent?                 @relation("ParentUser")
+  classAssignments          ClassTeacher[]          @relation("ClassTeacherUser")
+  sessionAssignments        SessionTeacher[]        @relation("SessionTeacherUser")
+  markedAttendances         Attendance[]            @relation("AttendanceMarker")
+  createdAttendanceRounds   AttendanceAutoRound[]   @relation("AttendanceAutoRoundCreator")
+  attendanceAutoAttempts    AttendanceAutoAttempt[] @relation("AttendanceAutoAttemptUser")
+  createdComments           StudentComment[]        @relation("CommentCreator")
+  createdExams              Exam[]                  @relation("ExamCreator")
+  createdScores             Score[]                 @relation("ScoreCreator")
+  updatedScores             Score[]                 @relation("ScoreUpdater")
+  createdTuitionCharges     TuitionCharge[]         @relation("TuitionChargeCreator")
+  receivedPayments          Payment[]               @relation("PaymentReceiver")
+  salaryRules               SalaryRule[]            @relation("SalaryRuleStaff")
+  createdPayrolls           Payroll[]               @relation("PayrollCreator")
+  approvedPayrolls          Payroll[]               @relation("PayrollApprover")
+  paidPayrolls              Payroll[]               @relation("PayrollPayer")
+  payrollAdjustmentsCreated PayrollAdjustment[]     @relation("PayrollAdjustmentCreator")
+  payrollAdjustmentsStaff   PayrollAdjustment[]     @relation("PayrollAdjustmentStaff")
+  payrollItems              PayrollItem[]           @relation("PayrollItemStaff")
+  staffAttendances          StaffAttendance[]       @relation("StaffAttendanceStaff")
+  confirmedStaffAttendances StaffAttendance[]       @relation("StaffAttendanceConfirmer")
+  notifications             Notification[]          @relation("NotificationUser")
+  auditLogs                 AuditLog[]              @relation("AuditLogUser")
 
   @@index([status])
   @@map("users")
@@ -335,14 +342,15 @@ model Student {
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
 
-  user           User?            @relation("StudentUser", fields: [userId], references: [id], onDelete: SetNull)
-  createdBy      User?            @relation("StudentCreator", fields: [createdByUserId], references: [id], onDelete: SetNull)
-  parents        StudentParent[]
-  enrollments    ClassStudent[]
-  attendances    Attendance[]
-  comments       StudentComment[]
-  scores         Score[]
-  tuitionCharges TuitionCharge[]
+  user                   User?                   @relation("StudentUser", fields: [userId], references: [id], onDelete: SetNull)
+  createdBy              User?                   @relation("StudentCreator", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  parents                StudentParent[]
+  enrollments            ClassStudent[]
+  attendances            Attendance[]
+  comments               StudentComment[]
+  scores                 Score[]
+  tuitionCharges         TuitionCharge[]
+  attendanceAutoAttempts AttendanceAutoAttempt[]
 
   @@index([status])
   @@index([clubClass])
@@ -510,13 +518,14 @@ model ClassSession {
   generalNote   String?
   completedAt   DateTime?
 
-  courseClass CourseClass         @relation(fields: [classId], references: [id], onDelete: Cascade)
-  schedule    ClassSchedule?      @relation(fields: [scheduleId], references: [id], onDelete: SetNull)
-  room        Room?               @relation(fields: [roomId], references: [id], onDelete: SetNull)
+  courseClass CourseClass           @relation(fields: [classId], references: [id], onDelete: Cascade)
+  schedule    ClassSchedule?        @relation(fields: [scheduleId], references: [id], onDelete: SetNull)
+  room        Room?                 @relation(fields: [roomId], references: [id], onDelete: SetNull)
   teachers    SessionTeacher[]
   attendances Attendance[]
   comments    StudentComment[]
   attachments SessionAttachment[]
+  autoRounds  AttendanceAutoRound[]
 
   @@unique([classId, sessionDate, startTime])
   @@index([sessionDate, status])
@@ -569,6 +578,43 @@ model Attendance {
   @@unique([sessionId, studentId])
   @@index([studentId, status])
   @@map("attendances")
+}
+
+model AttendanceAutoRound {
+  id              String                    @id @default(cuid())
+  sessionId       String
+  createdByUserId String
+  code            String
+  targetCount     Int
+  status          AttendanceAutoRoundStatus @default(ACTIVE)
+  startedAt       DateTime                  @default(now())
+  endedAt         DateTime?
+
+  session   ClassSession            @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  createdBy User                    @relation("AttendanceAutoRoundCreator", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  attempts  AttendanceAutoAttempt[]
+
+  @@index([sessionId, status])
+  @@map("attendance_auto_rounds")
+}
+
+model AttendanceAutoAttempt {
+  id            String   @id @default(cuid())
+  roundId       String
+  studentId     String
+  userId        String?
+  submittedCode String
+  isCorrect     Boolean  @default(false)
+  accepted      Boolean  @default(false)
+  submittedAt   DateTime @default(now())
+
+  round   AttendanceAutoRound @relation(fields: [roundId], references: [id], onDelete: Cascade)
+  student Student             @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  user    User?               @relation("AttendanceAutoAttemptUser", fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([roundId, accepted, submittedAt])
+  @@index([studentId, submittedAt])
+  @@map("attendance_auto_attempts")
 }
 
 model StudentComment {
