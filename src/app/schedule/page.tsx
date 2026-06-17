@@ -46,7 +46,7 @@ const classTextColorClasses = [
 const timetableStartMinute = 6 * 60;
 const timetableEndMinute = 22 * 60;
 const timetableRangeMinute = timetableEndMinute - timetableStartMinute;
-const timetableMinHeight = 900;
+const timetableMinHeight = 660;
 
 type SchedulePageProps = {
   searchParams?: Promise<{
@@ -97,7 +97,7 @@ function timetableHeight(startTime: string, endTime: string) {
   const start = timeToMinutes(startTime);
   const end = Math.max(start + 45, timeToMinutes(endTime));
 
-  return Math.max(6, ((end - start) / timetableRangeMinute) * 100);
+  return Math.max(5.5, ((end - start) / timetableRangeMinute) * 100);
 }
 
 export default async function SchedulePage({ searchParams }: SchedulePageProps) {
@@ -198,16 +198,41 @@ export default async function SchedulePage({ searchParams }: SchedulePageProps) 
       <form className="grid gap-3 rounded-lg border border-slate-200 bg-white p-3 shadow-sm md:grid-cols-5">
         <input type="hidden" name="view" value={viewMode} />
         {showDetails ? <input type="hidden" name="details" value="1" /> : null}
-        <input name="class" defaultValue={classFilter} placeholder="Lớp" className="h-10 rounded-md border border-slate-200 px-3 text-sm outline-none focus:border-[#08a7dc]" />
-        <select name="day" defaultValue={dayFilter} className="h-10 rounded-md border border-slate-200 px-3 text-sm outline-none focus:border-[#08a7dc]">
+        <input
+          name="class"
+          defaultValue={classFilter}
+          placeholder="Lớp"
+          className="h-10 rounded-md border border-slate-200 px-3 text-sm outline-none focus:border-[#08a7dc]"
+        />
+        <select
+          name="day"
+          defaultValue={dayFilter}
+          className="h-10 rounded-md border border-slate-200 px-3 text-sm outline-none focus:border-[#08a7dc]"
+        >
           <option value="">Tất cả thứ</option>
           {dayLabels.slice(1).map((label, index) => (
-            <option key={label} value={index + 1}>{label}</option>
+            <option key={label} value={index + 1}>
+              {label}
+            </option>
           ))}
         </select>
-        <input name="teacher" defaultValue={teacherFilter} placeholder="Giáo viên" className="h-10 rounded-md border border-slate-200 px-3 text-sm outline-none focus:border-[#08a7dc]" />
-        <input name="room" defaultValue={roomFilter} placeholder="Phòng / cơ sở" className="h-10 rounded-md border border-slate-200 px-3 text-sm outline-none focus:border-[#08a7dc]" />
-        <select name="status" defaultValue={statusFilter} className="h-10 rounded-md border border-slate-200 px-3 text-sm outline-none focus:border-[#08a7dc]">
+        <input
+          name="teacher"
+          defaultValue={teacherFilter}
+          placeholder="Giáo viên"
+          className="h-10 rounded-md border border-slate-200 px-3 text-sm outline-none focus:border-[#08a7dc]"
+        />
+        <input
+          name="room"
+          defaultValue={roomFilter}
+          placeholder="Phòng / cơ sở"
+          className="h-10 rounded-md border border-slate-200 px-3 text-sm outline-none focus:border-[#08a7dc]"
+        />
+        <select
+          name="status"
+          defaultValue={statusFilter}
+          className="h-10 rounded-md border border-slate-200 px-3 text-sm outline-none focus:border-[#08a7dc]"
+        >
           <option value="">Tất cả trạng thái</option>
           <option value="ACTIVE">Đang áp dụng</option>
           <option value="INACTIVE">Ngừng</option>
@@ -308,7 +333,7 @@ export default async function SchedulePage({ searchParams }: SchedulePageProps) 
         </div>
       ) : (
         <div className="overflow-x-auto rounded-lg border border-zinc-200 bg-white shadow-sm">
-          <div className="min-w-[1180px]">
+          <div className="min-w-[1080px]">
             <div className="grid grid-cols-7 border-b border-slate-100 bg-slate-50">
               {dayLabels.slice(1).map((label) => (
                 <div
@@ -320,87 +345,85 @@ export default async function SchedulePage({ searchParams }: SchedulePageProps) 
               ))}
             </div>
             <div className="grid grid-cols-7">
-            {dayLabels.slice(1).map((label, index) => {
-              const dayIndex = index + 1;
-              const items = schedules.filter((item) => item.dayOfWeek === dayIndex);
+              {dayLabels.slice(1).map((label, index) => {
+                const dayIndex = index + 1;
+                const items = schedules.filter((item) => item.dayOfWeek === dayIndex);
 
-              return (
-                <div
-                  key={label}
-                  className="relative border-r border-slate-100 last:border-r-0"
-                  style={{ height: timetableMinHeight }}
-                >
-                  <div className="absolute inset-x-0 top-0 h-[37.5%] border-b border-cyan-100 bg-cyan-50/60 px-2 py-2">
-                    <span className="rounded bg-white/75 px-2 py-0.5 text-[11px] font-semibold uppercase text-cyan-700">
-                      Sáng
-                    </span>
-                  </div>
-                  <div className="absolute inset-x-0 top-[37.5%] h-[37.5%] border-b border-yellow-100 bg-yellow-50/70 px-2 py-2">
-                    <span className="rounded bg-white/75 px-2 py-0.5 text-[11px] font-semibold uppercase text-yellow-700">
-                      Chiều
-                    </span>
-                  </div>
-                  <div className="absolute inset-x-0 top-[75%] h-[25%] bg-indigo-50/60 px-2 py-2">
-                    <span className="rounded bg-white/75 px-2 py-0.5 text-[11px] font-semibold uppercase text-indigo-700">
-                      Tối
-                    </span>
-                  </div>
-                  <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-slate-200" />
-                  <div className="pointer-events-none absolute inset-x-0 top-[18.75%] h-px border-t border-dashed border-slate-200" />
-                  <div className="pointer-events-none absolute inset-x-0 top-[37.5%] h-px bg-slate-200" />
-                  <div className="pointer-events-none absolute inset-x-0 top-[56.25%] h-px border-t border-dashed border-slate-200" />
-                  <div className="pointer-events-none absolute inset-x-0 top-[75%] h-px bg-slate-200" />
-                  <div className="pointer-events-none absolute left-2 top-[0.5%] text-[10px] font-medium text-slate-400">06:00</div>
-                  <div className="pointer-events-none absolute left-2 top-[37.9%] text-[10px] font-medium text-slate-400">12:00</div>
-                  <div className="pointer-events-none absolute left-2 top-[75.4%] text-[10px] font-medium text-slate-400">18:00</div>
-                  <div className="absolute inset-0">
-                    {items.map((item) => {
-                      const sameStartItems = items.filter(
-                        (candidate) => candidate.startTime === item.startTime,
-                      );
-                      const sameStartIndex = sameStartItems.findIndex(
-                        (candidate) => candidate.id === item.id,
-                      );
-                      const columnWidth = 92 / sameStartItems.length;
+                return (
+                  <div
+                    key={label}
+                    className="relative border-r border-slate-100 last:border-r-0"
+                    style={{ height: timetableMinHeight }}
+                  >
+                    <div className="absolute inset-x-0 top-0 h-[37.5%] border-b border-cyan-100 bg-cyan-50/55 px-2 py-2">
+                      <span className="rounded bg-white/80 px-2 py-0.5 text-[10px] font-semibold uppercase text-cyan-700">
+                        Sáng
+                      </span>
+                    </div>
+                    <div className="absolute inset-x-0 top-[37.5%] h-[37.5%] border-b border-yellow-100 bg-yellow-50/65 px-2 py-2">
+                      <span className="rounded bg-white/80 px-2 py-0.5 text-[10px] font-semibold uppercase text-yellow-700">
+                        Chiều
+                      </span>
+                    </div>
+                    <div className="absolute inset-x-0 top-[75%] h-[25%] bg-indigo-50/55 px-2 py-2">
+                      <span className="rounded bg-white/80 px-2 py-0.5 text-[10px] font-semibold uppercase text-indigo-700">
+                        Tối
+                      </span>
+                    </div>
+                    <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-slate-200" />
+                    <div className="pointer-events-none absolute inset-x-0 top-[37.5%] h-px bg-slate-200" />
+                    <div className="pointer-events-none absolute inset-x-0 top-[75%] h-px bg-slate-200" />
+                    <div className="pointer-events-none absolute left-2 top-[0.5%] text-[10px] font-medium text-slate-400">06:00</div>
+                    <div className="pointer-events-none absolute left-2 top-[37.9%] text-[10px] font-medium text-slate-400">12:00</div>
+                    <div className="pointer-events-none absolute left-2 top-[75.4%] text-[10px] font-medium text-slate-400">18:00</div>
+                    <div className="absolute inset-0">
+                      {items.map((item) => {
+                        const sameStartItems = items.filter(
+                          (candidate) => candidate.startTime === item.startTime,
+                        );
+                        const sameStartIndex = sameStartItems.findIndex(
+                          (candidate) => candidate.id === item.id,
+                        );
+                        const columnWidth = 92 / sameStartItems.length;
+                        const mainTeacher =
+                          item.courseClass.teachers.find((teacher) => teacher.teacherRole === "MAIN")
+                            ?.teacher.name ??
+                          item.courseClass.teachers[0]?.teacher.name ??
+                          "-";
 
-                      return (
-                      <div
-                        key={item.id}
-                        className="absolute overflow-hidden rounded-md border border-white/80 bg-white/95 p-2 text-xs shadow-sm ring-1 ring-slate-200/80 transition hover:z-10 hover:-translate-y-0.5 hover:shadow-md"
-                        style={{
-                          top: `${timetableTop(item.startTime)}%`,
-                          height: `${timetableHeight(item.startTime, item.endTime)}%`,
-                          left: `${4 + sameStartIndex * columnWidth}%`,
-                          width: `${columnWidth}%`,
-                          minHeight: 74,
-                        }}
-                      >
-                        <p className="font-bold text-slate-700">{item.startTime} - {item.endTime}</p>
-                        <p className={`mt-1 text-sm font-black ${textColorForClass(item.courseClass.name)}`}>
-                          {item.courseClass.name}
+                        return (
+                          <div
+                            key={item.id}
+                            className="absolute overflow-hidden rounded-md border border-white/90 bg-white/95 px-2 py-1.5 text-xs shadow-sm ring-1 ring-slate-200/80 transition hover:z-10 hover:-translate-y-0.5 hover:shadow-md"
+                            style={{
+                              top: `${timetableTop(item.startTime)}%`,
+                              height: `${timetableHeight(item.startTime, item.endTime)}%`,
+                              left: `${4 + sameStartIndex * columnWidth}%`,
+                              width: `${columnWidth}%`,
+                              minHeight: 56,
+                            }}
+                          >
+                            <p className="font-bold leading-4 text-slate-700">
+                              {item.startTime} - {item.endTime}
+                            </p>
+                            <p className={`mt-0.5 truncate text-[13px] font-black leading-4 ${textColorForClass(item.courseClass.name)}`}>
+                              {item.courseClass.name}
+                            </p>
+                            <p className="mt-0.5 truncate text-[11px] font-medium leading-4 text-slate-600">
+                              {mainTeacher}
+                            </p>
+                          </div>
+                        );
+                      })}
+                      {!items.length ? (
+                        <p className="absolute left-3 right-3 top-14 rounded-md border border-dashed border-slate-200 bg-white/75 px-2 py-3 text-center text-xs text-slate-400">
+                          Trống
                         </p>
-                        <p className="mt-1">
-                          {item.courseClass.teachers
-                            .map((teacher) => teacher.teacher.name)
-                            .join(", ") || "-"}
-                        </p>
-                        <p className="mt-1">
-                          {item.room
-                            ? `${item.room.name} · ${item.room.branch.name}`
-                            : "Chưa chọn phòng"}
-                        </p>
-                      </div>
-                      );
-                    })}
-                    {!items.length ? (
-                      <p className="absolute left-3 right-3 top-16 rounded-md border border-dashed border-slate-200 bg-white/80 px-2 py-4 text-center text-xs text-slate-400">
-                        Trống
-                      </p>
-                    ) : null}
+                      ) : null}
+                    </div>
                   </div>
-                </div>
-              );
-            })}
+                );
+              })}
             </div>
           </div>
         </div>
