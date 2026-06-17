@@ -30,6 +30,24 @@ const classColorClasses = [
   "border-violet-200 bg-violet-50 text-violet-900",
 ];
 
+const classTextColorClasses = [
+  "text-cyan-700",
+  "text-blue-700",
+  "text-amber-700",
+  "text-emerald-700",
+  "text-indigo-700",
+  "text-rose-700",
+  "text-violet-700",
+  "text-sky-700",
+  "text-teal-700",
+  "text-fuchsia-700",
+];
+
+const timetableStartMinute = 6 * 60;
+const timetableEndMinute = 22 * 60;
+const timetableRangeMinute = timetableEndMinute - timetableStartMinute;
+const timetableMinHeight = 900;
+
 type SchedulePageProps = {
   searchParams?: Promise<{
     class?: string;
@@ -44,13 +62,42 @@ type SchedulePageProps = {
 };
 
 function colorForClass(className: string) {
+  return classColorClasses[colorIndexForClass(className) % classColorClasses.length];
+}
+
+function textColorForClass(className: string) {
+  return classTextColorClasses[colorIndexForClass(className) % classTextColorClasses.length];
+}
+
+function colorIndexForClass(className: string) {
   let hash = 0;
 
   for (const char of className) {
     hash = (hash * 31 + char.charCodeAt(0)) % 997;
   }
 
-  return classColorClasses[hash % classColorClasses.length];
+  return hash;
+}
+
+function timeToMinutes(time: string) {
+  const [hour = 0, minute = 0] = time.split(":").map(Number);
+  return hour * 60 + minute;
+}
+
+function timetableTop(time: string) {
+  const minutes = Math.min(
+    timetableEndMinute,
+    Math.max(timetableStartMinute, timeToMinutes(time)),
+  );
+
+  return ((minutes - timetableStartMinute) / timetableRangeMinute) * 100;
+}
+
+function timetableHeight(startTime: string, endTime: string) {
+  const start = timeToMinutes(startTime);
+  const end = Math.max(start + 45, timeToMinutes(endTime));
+
+  return Math.max(6, ((end - start) / timetableRangeMinute) * 100);
 }
 
 export default async function SchedulePage({ searchParams }: SchedulePageProps) {
@@ -261,24 +308,77 @@ export default async function SchedulePage({ searchParams }: SchedulePageProps) 
         </div>
       ) : (
         <div className="overflow-x-auto rounded-lg border border-zinc-200 bg-white shadow-sm">
-          <div className="grid min-w-[1180px] grid-cols-7">
+          <div className="min-w-[1180px]">
+            <div className="grid grid-cols-7 border-b border-slate-100 bg-slate-50">
+              {dayLabels.slice(1).map((label) => (
+                <div
+                  key={label}
+                  className="border-r border-slate-100 px-3 py-3 text-center text-sm font-bold text-[#17215c] last:border-r-0"
+                >
+                  {label}
+                </div>
+              ))}
+            </div>
+            <div className="grid grid-cols-7">
             {dayLabels.slice(1).map((label, index) => {
               const dayIndex = index + 1;
               const items = schedules.filter((item) => item.dayOfWeek === dayIndex);
 
               return (
-                <div key={label} className="min-h-64 border-r border-slate-100 last:border-r-0">
-                  <div className="border-b border-slate-100 bg-slate-50 px-3 py-3 text-center text-sm font-bold text-[#17215c]">
-                    {label}
+                <div
+                  key={label}
+                  className="relative border-r border-slate-100 last:border-r-0"
+                  style={{ height: timetableMinHeight }}
+                >
+                  <div className="absolute inset-x-0 top-0 h-[37.5%] border-b border-cyan-100 bg-cyan-50/60 px-2 py-2">
+                    <span className="rounded bg-white/75 px-2 py-0.5 text-[11px] font-semibold uppercase text-cyan-700">
+                      Sáng
+                    </span>
                   </div>
-                  <div className="space-y-2 p-2">
-                    {items.map((item) => (
+                  <div className="absolute inset-x-0 top-[37.5%] h-[37.5%] border-b border-yellow-100 bg-yellow-50/70 px-2 py-2">
+                    <span className="rounded bg-white/75 px-2 py-0.5 text-[11px] font-semibold uppercase text-yellow-700">
+                      Chiều
+                    </span>
+                  </div>
+                  <div className="absolute inset-x-0 top-[75%] h-[25%] bg-indigo-50/60 px-2 py-2">
+                    <span className="rounded bg-white/75 px-2 py-0.5 text-[11px] font-semibold uppercase text-indigo-700">
+                      Tối
+                    </span>
+                  </div>
+                  <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-slate-200" />
+                  <div className="pointer-events-none absolute inset-x-0 top-[18.75%] h-px border-t border-dashed border-slate-200" />
+                  <div className="pointer-events-none absolute inset-x-0 top-[37.5%] h-px bg-slate-200" />
+                  <div className="pointer-events-none absolute inset-x-0 top-[56.25%] h-px border-t border-dashed border-slate-200" />
+                  <div className="pointer-events-none absolute inset-x-0 top-[75%] h-px bg-slate-200" />
+                  <div className="pointer-events-none absolute left-2 top-[0.5%] text-[10px] font-medium text-slate-400">06:00</div>
+                  <div className="pointer-events-none absolute left-2 top-[37.9%] text-[10px] font-medium text-slate-400">12:00</div>
+                  <div className="pointer-events-none absolute left-2 top-[75.4%] text-[10px] font-medium text-slate-400">18:00</div>
+                  <div className="absolute inset-0">
+                    {items.map((item) => {
+                      const sameStartItems = items.filter(
+                        (candidate) => candidate.startTime === item.startTime,
+                      );
+                      const sameStartIndex = sameStartItems.findIndex(
+                        (candidate) => candidate.id === item.id,
+                      );
+                      const columnWidth = 92 / sameStartItems.length;
+
+                      return (
                       <div
                         key={item.id}
-                        className={`rounded-md border p-2 text-xs ${colorForClass(item.courseClass.name)}`}
+                        className="absolute overflow-hidden rounded-md border border-white/80 bg-white/95 p-2 text-xs shadow-sm ring-1 ring-slate-200/80 transition hover:z-10 hover:-translate-y-0.5 hover:shadow-md"
+                        style={{
+                          top: `${timetableTop(item.startTime)}%`,
+                          height: `${timetableHeight(item.startTime, item.endTime)}%`,
+                          left: `${4 + sameStartIndex * columnWidth}%`,
+                          width: `${columnWidth}%`,
+                          minHeight: 74,
+                        }}
                       >
-                        <p className="font-bold">{item.startTime} - {item.endTime}</p>
-                        <p className="mt-1 text-sm font-bold">{item.courseClass.name}</p>
+                        <p className="font-bold text-slate-700">{item.startTime} - {item.endTime}</p>
+                        <p className={`mt-1 text-sm font-black ${textColorForClass(item.courseClass.name)}`}>
+                          {item.courseClass.name}
+                        </p>
                         <p className="mt-1">
                           {item.courseClass.teachers
                             .map((teacher) => teacher.teacher.name)
@@ -290,9 +390,10 @@ export default async function SchedulePage({ searchParams }: SchedulePageProps) 
                             : "Chưa chọn phòng"}
                         </p>
                       </div>
-                    ))}
+                      );
+                    })}
                     {!items.length ? (
-                      <p className="rounded-md border border-dashed border-slate-200 px-2 py-4 text-center text-xs text-slate-400">
+                      <p className="absolute left-3 right-3 top-16 rounded-md border border-dashed border-slate-200 bg-white/80 px-2 py-4 text-center text-xs text-slate-400">
                         Trống
                       </p>
                     ) : null}
@@ -300,6 +401,7 @@ export default async function SchedulePage({ searchParams }: SchedulePageProps) 
                 </div>
               );
             })}
+            </div>
           </div>
         </div>
       )}
