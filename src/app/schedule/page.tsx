@@ -23,17 +23,30 @@ const dayLabels = [
 const classColorClasses = [
   "border-cyan-200 bg-cyan-50 text-cyan-900",
   "border-blue-200 bg-blue-50 text-blue-900",
-  "border-yellow-200 bg-yellow-50 text-yellow-900",
+  "border-amber-200 bg-amber-50 text-amber-900",
   "border-emerald-200 bg-emerald-50 text-emerald-900",
   "border-indigo-200 bg-indigo-50 text-indigo-900",
   "border-rose-200 bg-rose-50 text-rose-900",
   "border-violet-200 bg-violet-50 text-violet-900",
 ];
 
+const classCardColorClasses = [
+  "border-l-cyan-500 text-cyan-800",
+  "border-l-blue-500 text-blue-800",
+  "border-l-amber-500 text-amber-800",
+  "border-l-emerald-500 text-emerald-800",
+  "border-l-indigo-500 text-indigo-800",
+  "border-l-rose-500 text-rose-800",
+  "border-l-violet-500 text-violet-800",
+  "border-l-sky-500 text-sky-800",
+  "border-l-teal-500 text-teal-800",
+  "border-l-fuchsia-500 text-fuchsia-800",
+];
+
 const periodShellClasses = [
-  "min-h-[96px] border-b border-cyan-100 bg-cyan-50/35 p-2",
-  "min-h-[96px] border-b border-yellow-100 bg-yellow-50/45 p-2",
-  "min-h-[72px] bg-indigo-50/35 p-2",
+  "min-h-[92px] border-b border-slate-100 bg-sky-50/25 p-2",
+  "min-h-[92px] border-b border-slate-100 bg-yellow-50/30 p-2",
+  "min-h-[72px] bg-indigo-50/25 p-2",
 ];
 
 type SchedulePageProps = {
@@ -51,6 +64,10 @@ type SchedulePageProps = {
 
 function colorForClass(className: string) {
   return classColorClasses[colorIndexForClass(className) % classColorClasses.length];
+}
+
+function cardColorForClass(className: string) {
+  return classCardColorClasses[colorIndexForClass(className) % classCardColorClasses.length];
 }
 
 function colorIndexForClass(className: string) {
@@ -356,9 +373,9 @@ export default async function SchedulePage({ searchParams }: SchedulePageProps) 
                             return (
                               <div
                                 key={item.id}
-                                className={`rounded-md border px-2 py-1.5 text-xs shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${colorForClass(item.courseClass.name)}`}
+                                className={`rounded-md border border-slate-200 border-l-4 bg-white px-2 py-1.5 text-xs text-slate-700 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${cardColorForClass(item.courseClass.name)}`}
                               >
-                                <p className="font-bold leading-4">
+                                <p className="font-semibold leading-4 text-slate-700">
                                   {item.startTime} - {item.endTime}
                                 </p>
                                 <p className="mt-0.5 text-[13px] font-black leading-4">
