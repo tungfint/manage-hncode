@@ -30,23 +30,11 @@ const classColorClasses = [
   "border-violet-200 bg-violet-50 text-violet-900",
 ];
 
-const classTextColorClasses = [
-  "text-cyan-700",
-  "text-blue-700",
-  "text-amber-700",
-  "text-emerald-700",
-  "text-indigo-700",
-  "text-rose-700",
-  "text-violet-700",
-  "text-sky-700",
-  "text-teal-700",
-  "text-fuchsia-700",
+const periodShellClasses = [
+  "min-h-[96px] border-b border-cyan-100 bg-cyan-50/35 p-2",
+  "min-h-[96px] border-b border-yellow-100 bg-yellow-50/45 p-2",
+  "min-h-[72px] bg-indigo-50/35 p-2",
 ];
-
-const timetableStartMinute = 6 * 60;
-const timetableEndMinute = 22 * 60;
-const timetableRangeMinute = timetableEndMinute - timetableStartMinute;
-const timetableMinHeight = 330;
 
 type SchedulePageProps = {
   searchParams?: Promise<{
@@ -65,10 +53,6 @@ function colorForClass(className: string) {
   return classColorClasses[colorIndexForClass(className) % classColorClasses.length];
 }
 
-function textColorForClass(className: string) {
-  return classTextColorClasses[colorIndexForClass(className) % classTextColorClasses.length];
-}
-
 function colorIndexForClass(className: string) {
   let hash = 0;
 
@@ -84,54 +68,18 @@ function timeToMinutes(time: string) {
   return hour * 60 + minute;
 }
 
-function timetableTop(time: string) {
-  const minutes = Math.min(
-    timetableEndMinute,
-    Math.max(timetableStartMinute, timeToMinutes(time)),
-  );
+function periodIndexForTime(time: string) {
+  const minutes = timeToMinutes(time);
 
-  return ((minutes - timetableStartMinute) / timetableRangeMinute) * 100;
-}
-
-function timetableHeight(startTime: string, endTime: string) {
-  const start = timeToMinutes(startTime);
-  const end = Math.max(start + 45, timeToMinutes(endTime));
-
-  return Math.max(9, ((end - start) / timetableRangeMinute) * 100);
-}
-
-function layoutTimetableItems<T extends { id: string; startTime: string; endTime: string }>(
-  items: T[],
-) {
-  const lanes: number[] = [];
-  const layout = new Map<string, { lane: number; laneCount: number }>();
-  const orderedItems = [...items].sort((a, b) => {
-    const startDiff = timeToMinutes(a.startTime) - timeToMinutes(b.startTime);
-    return startDiff || timeToMinutes(a.endTime) - timeToMinutes(b.endTime);
-  });
-
-  for (const item of orderedItems) {
-    const start = timeToMinutes(item.startTime);
-    const end = Math.max(start + 45, timeToMinutes(item.endTime));
-    let lane = lanes.findIndex((laneEnd) => laneEnd <= start);
-
-    if (lane === -1) {
-      lane = lanes.length;
-      lanes.push(end);
-    } else {
-      lanes[lane] = end;
-    }
-
-    layout.set(item.id, { lane, laneCount: 1 });
+  if (minutes < 12 * 60) {
+    return 0;
   }
 
-  const laneCount = Math.max(lanes.length, 1);
-
-  for (const value of layout.values()) {
-    value.laneCount = laneCount;
+  if (minutes < 18 * 60) {
+    return 1;
   }
 
-  return layout;
+  return 2;
 }
 
 export default async function SchedulePage({ searchParams }: SchedulePageProps) {
@@ -382,78 +330,54 @@ export default async function SchedulePage({ searchParams }: SchedulePageProps) 
               {dayLabels.slice(1).map((label, index) => {
                 const dayIndex = index + 1;
                 const items = schedules.filter((item) => item.dayOfWeek === dayIndex);
-                const itemLayouts = layoutTimetableItems(items);
+                const periods = [0, 1, 2].map((periodIndex) =>
+                  items.filter((item) => periodIndexForTime(item.startTime) === periodIndex),
+                );
 
                 return (
                   <div
                     key={label}
-                    className="relative border-r border-slate-100 last:border-r-0"
-                    style={{ height: timetableMinHeight }}
+                    className="border-r border-slate-100 last:border-r-0"
                   >
-                    <div className="absolute inset-x-0 top-0 h-[37.5%] border-b border-cyan-100 bg-cyan-50/45 px-1.5 py-1">
-                      <span className="rounded bg-white/75 px-1.5 py-0.5 text-[9px] font-semibold uppercase text-cyan-700">
-                        Sáng
-                      </span>
-                    </div>
-                    <div className="absolute inset-x-0 top-[37.5%] h-[37.5%] border-b border-yellow-100 bg-yellow-50/55 px-1.5 py-1">
-                      <span className="rounded bg-white/75 px-1.5 py-0.5 text-[9px] font-semibold uppercase text-yellow-700">
-                        Chiều
-                      </span>
-                    </div>
-                    <div className="absolute inset-x-0 top-[75%] h-[25%] bg-indigo-50/45 px-1.5 py-1">
-                      <span className="rounded bg-white/75 px-1.5 py-0.5 text-[9px] font-semibold uppercase text-indigo-700">
-                        Tối
-                      </span>
-                    </div>
-                    <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-slate-200" />
-                    <div className="pointer-events-none absolute inset-x-0 top-[37.5%] h-px bg-slate-200" />
-                    <div className="pointer-events-none absolute inset-x-0 top-[75%] h-px bg-slate-200" />
-                    <div className="pointer-events-none absolute left-2 top-[0.5%] text-[10px] font-medium text-slate-400">06:00</div>
-                    <div className="pointer-events-none absolute left-2 top-[37.9%] text-[10px] font-medium text-slate-400">12:00</div>
-                    <div className="pointer-events-none absolute left-2 top-[75.4%] text-[10px] font-medium text-slate-400">18:00</div>
-                    <div className="absolute inset-0">
-                      {items.map((item) => {
-                        const layout = itemLayouts.get(item.id) ?? {
-                          lane: 0,
-                          laneCount: 1,
-                        };
-                        const columnWidth = 92 / layout.laneCount;
-                        const mainTeacher =
-                          item.courseClass.teachers.find((teacher) => teacher.teacherRole === "MAIN")
-                            ?.teacher.name ??
-                          item.courseClass.teachers[0]?.teacher.name ??
-                          "-";
+                    {periods.map((periodItems, periodIndex) => (
+                      <div
+                        key={periodIndex}
+                        className={periodShellClasses[periodIndex]}
+                      >
+                        <div className="space-y-1.5">
+                          {periodItems.map((item) => {
+                            const mainTeacher =
+                              item.courseClass.teachers.find(
+                                (teacher) => teacher.teacherRole === "MAIN",
+                              )?.teacher.name ??
+                              item.courseClass.teachers[0]?.teacher.name ??
+                              "-";
 
-                        return (
-                          <div
-                            key={item.id}
-                            className="absolute overflow-hidden rounded-md border border-white/90 bg-white/95 px-2 py-1.5 text-xs shadow-sm ring-1 ring-slate-200/80 transition hover:z-10 hover:-translate-y-0.5 hover:shadow-md"
-                            style={{
-                              top: `${timetableTop(item.startTime)}%`,
-                              height: `${timetableHeight(item.startTime, item.endTime)}%`,
-                              left: `${4 + layout.lane * columnWidth}%`,
-                              width: `${columnWidth}%`,
-                              minHeight: 42,
-                            }}
-                          >
-                            <p className="text-[11px] font-bold leading-3 text-slate-700">
-                              {item.startTime} - {item.endTime}
-                            </p>
-                            <p className={`mt-0.5 truncate text-xs font-black leading-4 ${textColorForClass(item.courseClass.name)}`}>
-                              {item.courseClass.name}
-                            </p>
-                            <p className="truncate text-[10px] font-medium leading-3 text-slate-600">
-                              {mainTeacher}
-                            </p>
-                          </div>
-                        );
-                      })}
-                      {!items.length ? (
-                        <p className="absolute left-3 right-3 top-14 rounded-md border border-dashed border-slate-200 bg-white/75 px-2 py-3 text-center text-xs text-slate-400">
-                          Trống
-                        </p>
-                      ) : null}
-                    </div>
+                            return (
+                              <div
+                                key={item.id}
+                                className={`rounded-md border px-2 py-1.5 text-xs shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${colorForClass(item.courseClass.name)}`}
+                              >
+                                <p className="font-bold leading-4">
+                                  {item.startTime} - {item.endTime}
+                                </p>
+                                <p className="mt-0.5 text-[13px] font-black leading-4">
+                                  {item.courseClass.name}
+                                </p>
+                                <p className="mt-0.5 truncate text-[11px] font-medium leading-4 opacity-85">
+                                  {mainTeacher}
+                                </p>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ))}
+                    {!items.length ? (
+                      <p className="m-2 rounded-md border border-dashed border-slate-200 bg-white/75 px-2 py-3 text-center text-xs text-slate-400">
+                        Trống
+                      </p>
+                    ) : null}
                   </div>
                 );
               })}
