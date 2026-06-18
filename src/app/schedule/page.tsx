@@ -46,7 +46,7 @@ const classTextColorClasses = [
 const timetableStartMinute = 6 * 60;
 const timetableEndMinute = 22 * 60;
 const timetableRangeMinute = timetableEndMinute - timetableStartMinute;
-const timetableMinHeight = 660;
+const timetableMinHeight = 330;
 
 type SchedulePageProps = {
   searchParams?: Promise<{
@@ -97,7 +97,41 @@ function timetableHeight(startTime: string, endTime: string) {
   const start = timeToMinutes(startTime);
   const end = Math.max(start + 45, timeToMinutes(endTime));
 
-  return Math.max(5.5, ((end - start) / timetableRangeMinute) * 100);
+  return Math.max(9, ((end - start) / timetableRangeMinute) * 100);
+}
+
+function layoutTimetableItems<T extends { id: string; startTime: string; endTime: string }>(
+  items: T[],
+) {
+  const lanes: number[] = [];
+  const layout = new Map<string, { lane: number; laneCount: number }>();
+  const orderedItems = [...items].sort((a, b) => {
+    const startDiff = timeToMinutes(a.startTime) - timeToMinutes(b.startTime);
+    return startDiff || timeToMinutes(a.endTime) - timeToMinutes(b.endTime);
+  });
+
+  for (const item of orderedItems) {
+    const start = timeToMinutes(item.startTime);
+    const end = Math.max(start + 45, timeToMinutes(item.endTime));
+    let lane = lanes.findIndex((laneEnd) => laneEnd <= start);
+
+    if (lane === -1) {
+      lane = lanes.length;
+      lanes.push(end);
+    } else {
+      lanes[lane] = end;
+    }
+
+    layout.set(item.id, { lane, laneCount: 1 });
+  }
+
+  const laneCount = Math.max(lanes.length, 1);
+
+  for (const value of layout.values()) {
+    value.laneCount = laneCount;
+  }
+
+  return layout;
 }
 
 export default async function SchedulePage({ searchParams }: SchedulePageProps) {
@@ -348,6 +382,7 @@ export default async function SchedulePage({ searchParams }: SchedulePageProps) 
               {dayLabels.slice(1).map((label, index) => {
                 const dayIndex = index + 1;
                 const items = schedules.filter((item) => item.dayOfWeek === dayIndex);
+                const itemLayouts = layoutTimetableItems(items);
 
                 return (
                   <div
@@ -355,18 +390,18 @@ export default async function SchedulePage({ searchParams }: SchedulePageProps) 
                     className="relative border-r border-slate-100 last:border-r-0"
                     style={{ height: timetableMinHeight }}
                   >
-                    <div className="absolute inset-x-0 top-0 h-[37.5%] border-b border-cyan-100 bg-cyan-50/55 px-2 py-2">
-                      <span className="rounded bg-white/80 px-2 py-0.5 text-[10px] font-semibold uppercase text-cyan-700">
+                    <div className="absolute inset-x-0 top-0 h-[37.5%] border-b border-cyan-100 bg-cyan-50/45 px-1.5 py-1">
+                      <span className="rounded bg-white/75 px-1.5 py-0.5 text-[9px] font-semibold uppercase text-cyan-700">
                         Sáng
                       </span>
                     </div>
-                    <div className="absolute inset-x-0 top-[37.5%] h-[37.5%] border-b border-yellow-100 bg-yellow-50/65 px-2 py-2">
-                      <span className="rounded bg-white/80 px-2 py-0.5 text-[10px] font-semibold uppercase text-yellow-700">
+                    <div className="absolute inset-x-0 top-[37.5%] h-[37.5%] border-b border-yellow-100 bg-yellow-50/55 px-1.5 py-1">
+                      <span className="rounded bg-white/75 px-1.5 py-0.5 text-[9px] font-semibold uppercase text-yellow-700">
                         Chiều
                       </span>
                     </div>
-                    <div className="absolute inset-x-0 top-[75%] h-[25%] bg-indigo-50/55 px-2 py-2">
-                      <span className="rounded bg-white/80 px-2 py-0.5 text-[10px] font-semibold uppercase text-indigo-700">
+                    <div className="absolute inset-x-0 top-[75%] h-[25%] bg-indigo-50/45 px-1.5 py-1">
+                      <span className="rounded bg-white/75 px-1.5 py-0.5 text-[9px] font-semibold uppercase text-indigo-700">
                         Tối
                       </span>
                     </div>
@@ -378,13 +413,11 @@ export default async function SchedulePage({ searchParams }: SchedulePageProps) 
                     <div className="pointer-events-none absolute left-2 top-[75.4%] text-[10px] font-medium text-slate-400">18:00</div>
                     <div className="absolute inset-0">
                       {items.map((item) => {
-                        const sameStartItems = items.filter(
-                          (candidate) => candidate.startTime === item.startTime,
-                        );
-                        const sameStartIndex = sameStartItems.findIndex(
-                          (candidate) => candidate.id === item.id,
-                        );
-                        const columnWidth = 92 / sameStartItems.length;
+                        const layout = itemLayouts.get(item.id) ?? {
+                          lane: 0,
+                          laneCount: 1,
+                        };
+                        const columnWidth = 92 / layout.laneCount;
                         const mainTeacher =
                           item.courseClass.teachers.find((teacher) => teacher.teacherRole === "MAIN")
                             ?.teacher.name ??
@@ -398,18 +431,18 @@ export default async function SchedulePage({ searchParams }: SchedulePageProps) 
                             style={{
                               top: `${timetableTop(item.startTime)}%`,
                               height: `${timetableHeight(item.startTime, item.endTime)}%`,
-                              left: `${4 + sameStartIndex * columnWidth}%`,
+                              left: `${4 + layout.lane * columnWidth}%`,
                               width: `${columnWidth}%`,
-                              minHeight: 56,
+                              minHeight: 42,
                             }}
                           >
-                            <p className="font-bold leading-4 text-slate-700">
+                            <p className="text-[11px] font-bold leading-3 text-slate-700">
                               {item.startTime} - {item.endTime}
                             </p>
-                            <p className={`mt-0.5 truncate text-[13px] font-black leading-4 ${textColorForClass(item.courseClass.name)}`}>
+                            <p className={`mt-0.5 truncate text-xs font-black leading-4 ${textColorForClass(item.courseClass.name)}`}>
                               {item.courseClass.name}
                             </p>
-                            <p className="mt-0.5 truncate text-[11px] font-medium leading-4 text-slate-600">
+                            <p className="truncate text-[10px] font-medium leading-3 text-slate-600">
                               {mainTeacher}
                             </p>
                           </div>
