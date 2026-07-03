@@ -11,6 +11,7 @@ import {
   SESSION_COOKIE,
   verifyPassword,
 } from "@/lib/auth";
+import { getActiveAutoAttendancePathForUser } from "@/lib/active-auto-attendance";
 import { shouldUseSecureCookies } from "@/lib/cookie-options";
 import { prisma } from "@/lib/prisma";
 
@@ -75,7 +76,15 @@ export async function loginAction(formData: FormData) {
     },
   });
 
-  redirect(user.mustChangePassword ? "/change-password" : "/dashboard");
+  if (user.mustChangePassword) {
+    redirect("/change-password");
+  }
+
+  if (access.roles.includes("student")) {
+    redirect((await getActiveAutoAttendancePathForUser(user.id)) ?? "/dashboard");
+  }
+
+  redirect("/dashboard");
 }
 
 export async function logoutAction() {
@@ -145,5 +154,13 @@ export async function changePasswordAction(formData: FormData) {
     },
   });
 
-  redirect(wasRequired ? "/dashboard" : "/account?passwordChanged=1");
+  if (wasRequired) {
+    if (session.roles.includes("student")) {
+      redirect((await getActiveAutoAttendancePathForUser(user.id)) ?? "/dashboard");
+    }
+
+    redirect("/dashboard");
+  }
+
+  redirect("/account?passwordChanged=1");
 }

@@ -72,6 +72,10 @@ export default async function CheckInPage({
   const ranking = classSession.autoRounds
     .flatMap((round) => round.attempts)
     .sort((a, b) => a.submittedAt.getTime() - b.submittedAt.getTime());
+  const activeRanking = activeRound?.attempts ?? [];
+  const progressLabel = activeRound
+    ? `${Math.min(activeRanking.length, activeRound.targetCount)}/${activeRound.targetCount} học viên`
+    : "Chưa mở vòng";
   const attendance = classSession.attendances[0];
   const isAlreadyPresent = attendance
     ? ["PRESENT", "LATE", "LEFT_EARLY", "MAKEUP"].includes(attendance.status)
@@ -124,53 +128,83 @@ export default async function CheckInPage({
         </div>
       ) : null}
 
-      <section className="grid gap-5 xl:grid-cols-[0.9fr_1.1fr]">
-        <div className="rounded-lg border border-cyan-200 bg-[linear-gradient(135deg,#ecfeff_0%,#ffffff_55%,#fff8d7_100%)] p-5 shadow-sm">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <p className="text-sm text-slate-500">Học viên</p>
-              <h2 className="text-xl font-semibold text-[#17215c]">
-                {student.fullName}
-              </h2>
+      <section className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_380px]">
+        <div className="overflow-hidden rounded-lg border border-cyan-200 bg-white shadow-sm">
+          <div className="border-b border-cyan-100 bg-[linear-gradient(135deg,#ecfeff_0%,#ffffff_55%,#fff8d7_100%)] p-5">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-sm font-medium text-slate-500">Học viên</p>
+                <h2 className="text-2xl font-black text-[#17215c]">
+                  {student.fullName}
+                </h2>
+              </div>
+              <Badge tone={activeRound ? "success" : "warning"}>
+                {activeRound ? "Đang chạy" : "Đang chờ"}
+              </Badge>
             </div>
-            <Badge tone={activeRound ? "success" : "warning"}>
-              {activeRound ? "Đang chạy" : "Đang chờ"}
-            </Badge>
           </div>
 
-          {activeRound ? (
-            <>
-              <p className="mt-5 text-sm text-slate-500">Mã cần nhập</p>
-              <p className="mt-2 select-all rounded-md bg-[#17215c] px-4 py-4 text-center text-5xl font-black tracking-[0.28em] text-white">
-                {activeRound.code}
-              </p>
-              {!isAlreadyPresent ? (
-                <form action={submitCode} className="mt-4">
-                  <input
-                    name="code"
-                    autoFocus
-                    autoComplete="off"
-                    placeholder="Nhập mã rồi Enter"
-                    className="h-12 w-full rounded-md border border-slate-200 px-4 text-center text-lg font-bold uppercase tracking-[0.18em] outline-none focus:border-[#08a7dc] focus:ring-2 focus:ring-[#08a7dc]/15"
-                  />
-                  <button
-                    type="submit"
-                    className="mt-3 h-11 w-full rounded-md bg-[#17215c] text-sm font-medium text-white hover:bg-[#25308d]"
-                  >
-                    Gửi mã
-                  </button>
-                </form>
-              ) : null}
-            </>
-          ) : (
-            <div className="mt-5 rounded-md border border-dashed border-slate-200 bg-white px-4 py-8 text-center text-sm text-slate-500">
-              Chờ giáo viên bật vòng điểm danh tự động.
+          <div className="p-5">
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-slate-100 bg-slate-50 px-4 py-3 text-sm">
+              <span className="font-medium text-slate-600">Tiến độ vòng này</span>
+              <span className="font-bold text-[#17215c]">{progressLabel}</span>
             </div>
-          )}
+
+            {activeRound ? (
+              <>
+                <div className="mt-5 text-center">
+                  <p className="text-sm font-medium text-slate-500">Mã cần nhập</p>
+                  <p className="mt-2 select-all rounded-md bg-[#17215c] px-4 py-5 text-center text-5xl font-black tracking-[0.24em] text-white shadow-sm sm:text-6xl">
+                    {activeRound.code}
+                  </p>
+                  <p className="mt-3 text-sm text-slate-500">
+                    Nhập đúng mã và bấm Enter để được ghi nhận theo thứ tự nhanh nhất.
+                  </p>
+                </div>
+                {!isAlreadyPresent ? (
+                  <form action={submitCode} className="mt-5">
+                    <input
+                      name="code"
+                      autoFocus
+                      autoComplete="off"
+                      enterKeyHint="send"
+                      placeholder="Nhập mã rồi Enter"
+                      className="h-14 w-full rounded-md border border-slate-200 px-4 text-center text-xl font-black uppercase tracking-[0.18em] outline-none transition focus:border-[#08a7dc] focus:ring-2 focus:ring-[#08a7dc]/15"
+                    />
+                    <button
+                      type="submit"
+                      className="mt-3 h-12 w-full rounded-md bg-[#17215c] text-sm font-bold text-white shadow-sm transition hover:bg-[#25308d]"
+                    >
+                      Gửi mã điểm danh
+                    </button>
+                  </form>
+                ) : (
+                  <div className="mt-5 rounded-md border border-teal-200 bg-teal-50 px-4 py-4 text-center text-sm font-medium text-teal-800">
+                    Em đã có trong danh sách điểm danh, có thể theo dõi bảng xếp hạng bên cạnh.
+                  </div>
+                )}
+              </>
+            ) : (
+              <div className="mt-5 rounded-md border border-dashed border-slate-200 bg-white px-4 py-10 text-center">
+                <p className="font-semibold text-[#17215c]">Đang chờ giáo viên bắt đầu</p>
+                <p className="mt-1 text-sm text-slate-500">
+                  Khi giáo viên mở vòng điểm danh, màn hình sẽ tự cập nhật.
+                </p>
+              </div>
+            )}
+          </div>
         </div>
 
         <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
-          <h2 className="font-semibold text-[#17215c]">Bảng xếp hạng</h2>
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h2 className="font-semibold text-[#17215c]">Bảng xếp hạng</h2>
+              <p className="mt-1 text-xs text-slate-500">Cập nhật theo thời gian gửi mã</p>
+            </div>
+            <Badge tone="info">
+              {ranking.length} lượt
+            </Badge>
+          </div>
           <div className="mt-4 space-y-2">
             {ranking.map((attempt, index) => (
               <div

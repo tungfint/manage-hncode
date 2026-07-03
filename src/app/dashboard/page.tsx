@@ -10,9 +10,11 @@ import {
   UsersRound,
   WalletCards,
 } from "lucide-react";
+import { redirect } from "next/navigation";
 import { AppShell } from "@/components/app-shell";
 import { Badge } from "@/components/ui/badge";
 import { can, getSessionOrRedirect } from "@/lib/auth";
+import { getActiveAutoAttendancePathForUser } from "@/lib/active-auto-attendance";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { sessionStatusLabels } from "@/lib/labels";
 import { prisma } from "@/lib/prisma";
@@ -35,6 +37,14 @@ function money(value: unknown) {
 
 export default async function DashboardPage() {
   const session = await getSessionOrRedirect();
+  const activeCheckInPath = session.roles.includes("student")
+    ? await getActiveAutoAttendancePathForUser(session.userId)
+    : null;
+
+  if (activeCheckInPath) {
+    redirect(activeCheckInPath);
+  }
+
   const today = new Date();
   const todayStart = startOfDay(today);
   const todayEnd = endOfDay(today);

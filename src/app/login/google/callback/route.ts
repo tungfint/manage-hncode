@@ -5,6 +5,7 @@ import {
   getEffectiveAccessForUser,
   SESSION_COOKIE,
 } from "@/lib/auth";
+import { getActiveAutoAttendancePathForUser } from "@/lib/active-auto-attendance";
 import { shouldUseSecureCookies } from "@/lib/cookie-options";
 import { prisma } from "@/lib/prisma";
 import { GOOGLE_STATE_COOKIE } from "../route";
@@ -124,7 +125,11 @@ export async function GET(request: NextRequest) {
     maxAge: 60 * 60 * 8,
   });
 
-  return NextResponse.redirect(
-    new URL(session.mustChangePassword ? "/change-password" : "/dashboard", request.url),
-  );
+  const targetPath = session.mustChangePassword
+    ? "/change-password"
+    : session.roles.includes("student")
+      ? (await getActiveAutoAttendancePathForUser(user.id)) ?? "/dashboard"
+      : "/dashboard";
+
+  return NextResponse.redirect(new URL(targetPath, request.url));
 }

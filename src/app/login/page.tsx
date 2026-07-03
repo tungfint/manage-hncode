@@ -3,6 +3,7 @@ import { Nunito } from "next/font/google";
 import { redirect } from "next/navigation";
 import { loginAction } from "@/app/login/actions";
 import { BrandLogo } from "@/components/brand-logo";
+import { getActiveAutoAttendancePathForUser } from "@/lib/active-auto-attendance";
 import { getCurrentSession } from "@/lib/auth";
 
 const loginDisplayFont = Nunito({
@@ -21,7 +22,15 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
   const session = await getCurrentSession();
 
   if (session) {
-    redirect(session.mustChangePassword ? "/change-password" : "/dashboard");
+    if (session.mustChangePassword) {
+      redirect("/change-password");
+    }
+
+    if (session.roles.includes("student")) {
+      redirect((await getActiveAutoAttendancePathForUser(session.userId)) ?? "/dashboard");
+    }
+
+    redirect("/dashboard");
   }
 
   const params = await searchParams;
